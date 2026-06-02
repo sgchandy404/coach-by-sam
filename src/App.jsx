@@ -75,15 +75,19 @@ function LoginScreen({ redirectError }) {
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 
   const login = async () => {
+    setErr(`Detected: ${isIOS ? 'iOS → redirect' : 'non-iOS → popup'}`)
     try {
       if (isIOS) {
+        setErr('iOS: calling signInWithRedirect…')
         await signInWithRedirect(auth, provider)
+        setErr('redirect called — navigating…')
       } else {
+        setErr('non-iOS: calling signInWithPopup…')
         await signInWithPopup(auth, provider)
       }
     } catch (e) {
       console.error('AUTH ERROR:', e.code, e.message)
-      setErr(e.code + ' — ' + e.message)
+      setErr('ERROR ' + e.code + ': ' + e.message)
     }
   }
   return (
