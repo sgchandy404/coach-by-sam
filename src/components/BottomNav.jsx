@@ -5,7 +5,7 @@ export default function BottomNav({ tab, setTab, onSettings }) {
     { key:'attributes',   label:'Attributes', Icon: RadarIcon   },
     { key:'measurements', label:'Measures',   Icon: RulerIcon   },
     { key:'rankings',     label:'Rankings',   Icon: RankingsIcon},
-    { key:'attendance',   label:'Attend',     Icon: AttendIcon  },
+    { key:'attendance',   label:'Attendance', Icon: AttendIcon  },
   ]
   return (
     <nav className="bottom-nav">
