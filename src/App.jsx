@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult } from 'firebase/auth'
+import { onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, browserLocalPersistence, setPersistence } from 'firebase/auth'
 import { auth, provider } from './lib/firebase.js'
 import ClientsPage      from './pages/ClientsPage.jsx'
 import PRLogPage        from './pages/PRLogPage.jsx'
@@ -75,19 +75,18 @@ function LoginScreen({ redirectError }) {
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 
   const login = async () => {
-    setErr(`Detected: ${isIOS ? 'iOS → redirect' : 'non-iOS → popup'}`)
     try {
       if (isIOS) {
-        setErr('iOS: calling signInWithRedirect…')
+        // Force localStorage persistence so Firebase survives the cross-origin
+        // redirect on iOS Safari (sessionStorage is wiped during redirect)
+        await setPersistence(auth, browserLocalPersistence)
         await signInWithRedirect(auth, provider)
-        setErr('redirect called — navigating…')
       } else {
-        setErr('non-iOS: calling signInWithPopup…')
         await signInWithPopup(auth, provider)
       }
     } catch (e) {
       console.error('AUTH ERROR:', e.code, e.message)
-      setErr('ERROR ' + e.code + ': ' + e.message)
+      setErr(e.code + ' — ' + e.message)
     }
   }
   return (
