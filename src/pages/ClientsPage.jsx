@@ -91,6 +91,31 @@ export default function ClientsPage({ clientId, setClientId, setTab }) {
         ))}
       </div>
 
+      {tab === 'active' && (
+        <div style={{
+          margin: '0 18px 14px',
+          padding: '14px 20px',
+          background: 'linear-gradient(135deg, #F7EAE3 0%, #FDF3DC 100%)',
+          borderRadius: 14,
+          border: '1px solid #E8D8C8',
+          display: 'flex', gap: 0,
+        }}>
+          {[
+            { value: clients.filter(c => c.status === 'active').length, label: 'Active', color: 'var(--accent)' },
+            { value: unpaidCount, label: 'Unpaid', color: unpaidCount > 0 ? '#B84C2A' : '#5C7A4E' },
+            { value: clients.filter(c => c.status === 'paused' || c.status === 'deactivated').length, label: 'Inactive', color: 'var(--text-2)' },
+          ].map((stat, i, arr) => (
+            <div key={stat.label} style={{ flex: 1, textAlign: 'center', position: 'relative' }}>
+              {i < arr.length - 1 && (
+                <div style={{ position: 'absolute', right: 0, top: '10%', height: '80%', width: 1, background: '#E8D8C8' }} />
+              )}
+              <p style={{ fontSize: 26, fontWeight: 700, color: stat.color, fontFamily: 'Playfair Display, serif', lineHeight: 1.1 }}>{stat.value}</p>
+              <p style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 500, marginTop: 3, textTransform: 'uppercase', letterSpacing: '0.6px' }}>{stat.label}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="section">
         {loading ? (
           <p style={{ color:'var(--text-3)', fontSize:14, padding:'20px 0' }}>Loading…</p>
@@ -99,56 +124,76 @@ export default function ClientsPage({ clientId, setClientId, setTab }) {
             <p>{tab === 'active' ? 'No active clients.' : tab === 'paused' ? 'No paused or deactivated clients.' : 'No clients yet.'}</p>
           </div>
         ) : (
-          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+          <div>
             {visible.map(c => {
-              const accentColor = avatarColor(c.name)
               const paid = c.paymentStatus === 'paid'
               const pill = statusPill[c.status]
               return (
-                <div key={c.id}
+                <div
+                  key={c.id}
+                  onClick={() => { setClientId(c.id); setTab('prs') }}
                   style={{
-                    position: 'relative',
-                    display: 'flex', alignItems: 'center', gap: 12,
-                    padding: '14px 14px 14px 16px',
-                    borderRadius: 'var(--r-md)',
+                    background: clientId === c.id ? 'var(--accent-light)' : 'linear-gradient(135deg, #FFFFFF 0%, #FDFAF6 100%)',
+                    borderRadius: 16,
                     border: '1px solid var(--border)',
-                    borderLeft: `3px solid ${accentColor}`,
-                    background: clientId === c.id
-                      ? 'var(--accent-light)'
-                      : 'linear-gradient(135deg, #FFFFFF 0%, #FDFAF6 100%)',
-                    boxShadow: '0 2px 8px rgba(90,60,30,0.06)',
+                    marginBottom: 10,
+                    overflow: 'hidden',
+                    boxShadow: '0 2px 12px rgba(90,60,30,0.07)',
+                    display: 'flex',
                     cursor: 'pointer',
+                    transition: 'transform 0.15s, box-shadow 0.15s',
                   }}
-                  onClick={() => { setClientId(c.id); setTab('prs') }}>
-                  <div className="avatar"
-                    style={{ background: accentColor, width: 46, height: 46, fontSize: 14,
-                      boxShadow: `0 0 0 3px ${accentColor}4D` }}>
-                    {getInitials(c.name)}
-                  </div>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
-                      <p style={{ fontWeight:600, fontSize:15 }}>{c.name}</p>
-                      {pill && <span style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:100, background:pill.bg, color:pill.color, border:`1px solid ${pill.border}` }}>{pill.label}</span>}
+                >
+                  {/* Left accent bar */}
+                  <div style={{ width: 4, background: avatarColor(c.name), flexShrink: 0 }} />
+
+                  {/* Card content */}
+                  <div style={{ flex: 1, padding: '14px 14px 14px 16px', display: 'flex', alignItems: 'center', gap: 14 }}>
+                    {/* Avatar with halo */}
+                    <div style={{
+                      width: 52, height: 52, borderRadius: '50%',
+                      background: avatarColor(c.name),
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 16, fontWeight: 700, color: 'white', flexShrink: 0,
+                      boxShadow: `0 0 0 3px ${avatarColor(c.name)}33`,
+                      fontFamily: 'DM Sans, sans-serif',
+                    }}>{getInitials(c.name)}</div>
+
+                    {/* Name + goal */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                        <p style={{ fontWeight: 700, fontSize: 16, color: 'var(--text)', letterSpacing: '-0.2px' }}>{c.name}</p>
+                        {pill && (
+                          <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 100, background: pill.bg, color: pill.color, border: `1px solid ${pill.border}`, flexShrink: 0 }}>
+                            {pill.label}
+                          </span>
+                        )}
+                      </div>
+                      {c.goal && (
+                        <p style={{ fontSize: 13, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {c.goal}
+                        </p>
+                      )}
                     </div>
-                    {c.goal && <p style={{ fontSize:13, color:'var(--text-2)', marginTop:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.goal}</p>}
+
+                    {/* Payment + dots menu */}
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8, flexShrink: 0 }}>
+                      <button onClick={e => togglePayment(e, c)} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                        <div style={{
+                          width: 8, height: 8, borderRadius: '50%',
+                          background: paid ? '#5C7A4E' : '#C4633A',
+                          animation: paid ? 'none' : 'unpaid-pulse 1.8s ease-in-out infinite',
+                        }} />
+                        <span style={{ fontSize: 12, fontWeight: 600, color: paid ? '#5C7A4E' : '#C4633A' }}>
+                          {paid ? 'Paid' : 'Unpaid'}
+                        </span>
+                      </button>
+                      <button className="btn btn-ghost btn-icon" onClick={e => { e.stopPropagation(); setManaging(c) }}
+                        style={{ color: 'var(--text-3)', padding: 4 }}>
+                        <DotsIcon />
+                      </button>
+                    </div>
                   </div>
-                  <button onClick={e => togglePayment(e, c)}
-                    style={{ display:'flex', alignItems:'center', gap:5, padding:'5px 8px',
-                      background:'none', border:'none', cursor:'pointer', flexShrink:0 }}>
-                    <span style={{
-                      width:8, height:8, borderRadius:'50%', flexShrink:0, display:'inline-block',
-                      background: paid ? 'var(--teal)' : 'var(--amber)',
-                      animation: paid ? 'none' : 'unpaid-pulse 1.8s ease-in-out infinite',
-                    }} />
-                    <span style={{ fontSize:12, fontWeight:600,
-                      color: paid ? 'var(--teal-text)' : 'var(--amber-text)' }}>
-                      {paid ? 'Paid' : 'Unpaid'}
-                    </span>
-                  </button>
-                  <button className="btn btn-ghost btn-icon" onClick={e => { e.stopPropagation(); setManaging(c) }}
-                    style={{ color:'var(--text-3)', marginLeft:2 }}>
-                    <DotsIcon />
-                  </button>
                 </div>
               )
             })}
