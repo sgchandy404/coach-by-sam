@@ -13,6 +13,7 @@ import BottomNav        from './components/BottomNav.jsx'
 export default function App() {
   const [user, setUser]         = useState(null)
   const [loading, setLoading]   = useState(true)
+  const [authError, setAuthError] = useState(null)
   const [tab, setTab]           = useState('clients')
   const [showSettings, setShowSettings] = useState(false)
   const [selectedClientId, setSelectedClientId] = useState(null)
@@ -24,6 +25,7 @@ export default function App() {
         await getRedirectResult(auth)
       } catch (e) {
         console.error('Redirect result error:', e.code, e.message)
+        setAuthError(e.code + ': ' + e.message)
       }
       unsubscribe = onAuthStateChanged(auth, u => { setUser(u); setLoading(false) })
     }
@@ -32,7 +34,7 @@ export default function App() {
   }, [])
 
   if (loading) return <Splash />
-  if (!user)   return <LoginScreen />
+  if (!user)   return <LoginScreen redirectError={authError} />
 
   const clientProps = { clientId: selectedClientId, setClientId: setSelectedClientId }
 
@@ -66,7 +68,7 @@ function Splash() {
   )
 }
 
-function LoginScreen() {
+function LoginScreen({ redirectError }) {
   const [err, setErr] = useState('')
 
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -107,6 +109,12 @@ function LoginScreen() {
           Track client progress,<br/>celebrate every win.
         </p>
       </div>
+      {redirectError && (
+        <div style={{ background:'#FAEAE4', border:'1px solid #E8A88A', borderRadius:10, padding:'10px 14px', maxWidth:300, width:'100%' }}>
+          <p style={{ color:'#6B2410', fontSize:11, fontWeight:600, marginBottom:3 }}>Firebase redirect error</p>
+          <p style={{ color:'#6B2410', fontSize:11, lineHeight:1.5, wordBreak:'break-all' }}>{redirectError}</p>
+        </div>
+      )}
       {err && (
         <p style={{ color:'var(--coral)', fontSize:12, textAlign:'center', maxWidth:280, lineHeight:1.5 }}>{err}</p>
       )}
