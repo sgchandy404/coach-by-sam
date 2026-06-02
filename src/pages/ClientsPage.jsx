@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react'
 import { signOut } from 'firebase/auth'
 import { auth } from '../lib/firebase.js'
-import { getClients, addClient, updateClient, deleteClientFull, getPRs, getAttributes, getMeasurements } from '../lib/firestore.js'
-import { getInitials, avatarColor } from '../lib/utils.js'
+import { getClients, addClient, updateClient, deleteClientFull, getPRs, getAttributes, getMeasurements, getAttendance, markAttended, unmarkAttended } from '../lib/firestore.js'
+import { getInitials, avatarColor, parseDMY, formatDMY, toHTMLDate, fromHTMLDate, nextMondayDMY, getMonthWindow } from '../lib/utils.js'
 import { GOAL_TYPES, DEFAULT_THRESHOLDS } from '../lib/evaluate.js'
 import ProgressReport from '../components/ProgressReport.jsx'
 
 const statusPill = {
   active:      null,
-  paused:      { label:'Paused',      bg:'#FAEEDA', color:'#633806', border:'#FAC775' },
-  deactivated: { label:'Deactivated', bg:'#FCEBEB', color:'#791F1F', border:'#F7C1C1' },
+  paused:      { label:'Paused',      bg:'#FDF3DC', color:'#7A5200', border:'#E8C97A' },
+  deactivated: { label:'Deactivated', bg:'#FAEAE4', color:'#6B2410', border:'#E8A88A' },
 }
 
 export default function ClientsPage({ clientId, setClientId, setTab }) {
@@ -151,12 +151,14 @@ export default function ClientsPage({ clientId, setClientId, setTab }) {
 
 // ── Add client modal ──────────────────────────────────────────────────────────
 function AddClientModal({ onClose, onSave }) {
-  const [name, setName]       = useState('')
-  const [goal, setGoal]       = useState('')
-  const [goalType, setGoalType] = useState('general')
-  const [dob, setDob]         = useState('')
-  const [notes, setNotes]     = useState('')
-  const [saving, setSaving]   = useState(false)
+  const [name, setName]               = useState('')
+  const [goal, setGoal]               = useState('')
+  const [goalType, setGoalType]       = useState('general')
+  const [dob, setDob]                 = useState('')
+  const [notes, setNotes]             = useState('')
+  const [membershipType, setMembership] = useState(3)
+  const [startDate, setStartDate]     = useState(nextMondayDMY())
+  const [saving, setSaving]           = useState(false)
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -178,6 +180,27 @@ function AddClientModal({ onClose, onSave }) {
           <input className="form-input" placeholder="e.g. Build strength, lose 5 kg" value={goal} onChange={e => setGoal(e.target.value)} />
         </div>
         <div className="form-group">
+          <label className="form-label">Membership</label>
+          <div style={{ display:'flex', gap:8 }}>
+            {[3, 4, 5].map(n => (
+              <button key={n} type="button"
+                onClick={() => setMembership(n)}
+                style={{ flex:1, padding:'9px 0', borderRadius:'var(--r-sm)', fontSize:14, fontWeight:600, cursor:'pointer', border:'1.5px solid',
+                  background: membershipType === n ? 'var(--accent)' : 'transparent',
+                  color:      membershipType === n ? '#fff' : 'var(--text-2)',
+                  borderColor: membershipType === n ? 'var(--accent)' : 'var(--border-mid)' }}>
+                {n}×/wk
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Start date</label>
+          <input className="form-input" type="date" value={toHTMLDate(startDate)}
+            onChange={e => setStartDate(fromHTMLDate(e.target.value))} />
+          <p style={{ fontSize:11, color:'var(--text-3)', marginTop:3 }}>Defaults to next Monday</p>
+        </div>
+        <div className="form-group">
           <label className="form-label">Date of birth</label>
           <input className="form-input" type="date" value={dob} onChange={e => setDob(e.target.value)} />
         </div>
@@ -190,7 +213,7 @@ function AddClientModal({ onClose, onSave }) {
           <button className="btn btn-primary btn-full" disabled={!name.trim() || saving}
             onClick={async () => {
               setSaving(true)
-              await onSave({ name: name.trim(), goal: goal.trim(), goalType, dob, notes: notes.trim(), paymentStatus:'unpaid', status:'active' })
+              await onSave({ name: name.trim(), goal: goal.trim(), goalType, dob, notes: notes.trim(), membershipType, startDate, paymentStatus:'unpaid', status:'active' })
               setSaving(false)
             }}>
             {saving ? 'Saving…' : 'Add client'}
@@ -203,22 +226,32 @@ function AddClientModal({ onClose, onSave }) {
 
 // ── Manage client modal ───────────────────────────────────────────────────────
 function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit }) {
-  const [view, setView]         = useState('menu')
-  const [name, setName]         = useState(client.name)
-  const [goal, setGoal]         = useState(client.goal || '')
-  const [goalType, setGoalType] = useState(client.goalType || 'general')
-  const [dob, setDob]           = useState(client.dob || '')
-  const [notes, setNotes]       = useState(client.notes || '')
+  const [view, setView]             = useState('menu')
+  const [name, setName]             = useState(client.name)
+  const [goal, setGoal]             = useState(client.goal || '')
+  const [goalType, setGoalType]     = useState(client.goalType || 'general')
+  const [dob, setDob]               = useState(client.dob || '')
+  const [notes, setNotes]           = useState(client.notes || '')
+  const [membershipType, setMembership] = useState(client.membershipType || 3)
+  const [startDate, setStartDate]   = useState(client.startDate || nextMondayDMY())
   const [thresholds, setThresholds] = useState(client.evaluationSettings || DEFAULT_THRESHOLDS)
   const [reportData, setReportData] = useState(null)
-  const [saving, setSaving]     = useState(false)
+  const [attendanceRecords, setAttendanceRecords] = useState([])
+  const [saving, setSaving]         = useState(false)
 
   const loadReport = async () => {
-    const [prs, attrs, measures] = await Promise.all([
-      getPRs(client.id), getAttributes(client.id), getMeasurements(client.id)
+    const [prs, attrs, measures, attendance] = await Promise.all([
+      getPRs(client.id), getAttributes(client.id), getMeasurements(client.id), getAttendance(client.id)
     ])
     setReportData({ prs, attrs, measures })
+    setAttendanceRecords(attendance)
     setView('report')
+  }
+
+  const loadAttendance = async () => {
+    const records = await getAttendance(client.id)
+    setAttendanceRecords(records)
+    setView('attendance')
   }
 
   if (view === 'report') return (
@@ -230,9 +263,35 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit }
           <p style={{ fontWeight:700, fontSize:16 }}>{client.name} — Progress report</p>
         </div>
         {reportData
-          ? <ProgressReport client={client} prs={reportData.prs} attributes={reportData.attrs} measurements={reportData.measures} />
+          ? <ProgressReport client={client} prs={reportData.prs} attributes={reportData.attrs} measurements={reportData.measures} attendance={attendanceRecords} />
           : <p style={{ color:'var(--text-3)', fontSize:14 }}>Loading…</p>}
         <button className="btn btn-ghost btn-full" onClick={onClose} style={{ marginTop:16 }}>Close</button>
+      </div>
+    </div>
+  )
+
+  if (view === 'attendance') return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" style={{ maxHeight:'95dvh' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-handle" />
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
+          <button className="btn btn-ghost btn-icon" onClick={() => setView('menu')}><BackIcon /></button>
+          <p style={{ fontWeight:700, fontSize:16 }}>{client.name} — Attendance</p>
+        </div>
+        <ClientAttendanceView
+          client={{ ...client, membershipType, startDate }}
+          records={attendanceRecords}
+          onToggle={async (dateStr, isAttended) => {
+            if (isAttended) {
+              await unmarkAttended(client.id, dateStr)
+              setAttendanceRecords(r => r.filter(x => x.date !== dateStr))
+            } else {
+              await markAttended(client.id, dateStr)
+              setAttendanceRecords(r => [...r, { date: dateStr }])
+            }
+          }}
+        />
+        <button className="btn btn-ghost btn-full" onClick={onClose} style={{ marginTop:12 }}>Close</button>
       </div>
     </div>
   )
@@ -257,6 +316,25 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit }
           <input className="form-input" value={goal} onChange={e => setGoal(e.target.value)} />
         </div>
         <div className="form-group">
+          <label className="form-label">Membership</label>
+          <div style={{ display:'flex', gap:8 }}>
+            {[3, 4, 5].map(n => (
+              <button key={n} type="button" onClick={() => setMembership(n)}
+                style={{ flex:1, padding:'9px 0', borderRadius:'var(--r-sm)', fontSize:14, fontWeight:600, cursor:'pointer', border:'1.5px solid',
+                  background: membershipType === n ? 'var(--accent)' : 'transparent',
+                  color:      membershipType === n ? '#fff' : 'var(--text-2)',
+                  borderColor: membershipType === n ? 'var(--accent)' : 'var(--border-mid)' }}>
+                {n}×/wk
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Start date</label>
+          <input className="form-input" type="date" value={toHTMLDate(startDate)}
+            onChange={e => setStartDate(fromHTMLDate(e.target.value))} />
+        </div>
+        <div className="form-group">
           <label className="form-label">Date of birth</label>
           <input className="form-input" type="date" value={dob} onChange={e => setDob(e.target.value)} />
         </div>
@@ -269,7 +347,7 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit }
           <button className="btn btn-primary btn-full" disabled={!name.trim() || saving}
             onClick={async () => {
               setSaving(true)
-              await onEdit({ name: name.trim(), goal: goal.trim(), goalType, dob, notes: notes.trim() })
+              await onEdit({ name: name.trim(), goal: goal.trim(), goalType, dob, notes: notes.trim(), membershipType, startDate })
               setSaving(false)
             }}>
             {saving ? 'Saving…' : 'Save changes'}
@@ -335,6 +413,9 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit }
           <button className="btn btn-outline btn-full" onClick={loadReport}>
             <ChartIcon /> View progress report
           </button>
+          <button className="btn btn-outline btn-full" onClick={loadAttendance}>
+            <CalendarIcon /> View attendance
+          </button>
           <button className="btn btn-outline btn-full" onClick={() => setView('edit')}>
             <EditIcon /> Edit profile
           </button>
@@ -394,6 +475,96 @@ function ThresholdSlider({ label, hint, value, min, max, step, unit, onChange })
   )
 }
 
+// ── Per-client attendance mini-calendar ───────────────────────────────────────
+function ClientAttendanceView({ client, records, onToggle }) {
+  const today  = new Date()
+  const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1))
+
+  const year       = viewDate.getFullYear()
+  const month      = viewDate.getMonth()
+  const totalDays  = new Date(year, month + 1, 0).getDate()
+  const firstDOW   = new Date(year, month, 1).getDay()
+  const monthLabel = viewDate.toLocaleString('default', { month: 'long', year: 'numeric' })
+  const monthStr   = `${String(month + 1).padStart(2, '0')}-${year}`
+
+  const attendedSet = new Set(records.filter(r => r.date?.slice(3) === monthStr).map(r => r.date))
+
+  // Stats — 28-day cycle anchored to client's startDate
+  const todayStr     = formatDMY(today)
+  const cycleWindow  = client.startDate ? getMonthWindow(client.startDate, todayStr) : null
+  const attended = cycleWindow
+    ? records.filter(r => { const d = parseDMY(r.date); return d && d >= cycleWindow.windowStart && d <= cycleWindow.windowEnd }).length
+    : attendedSet.size  // fallback: calendar month if no startDate
+  const expected = (client.membershipType || 3) * 4
+  const rate     = Math.min(100, Math.round((attended / expected) * 100))
+
+  // Streak
+  const getWeekStart = (d) => { const w = new Date(d); w.setDate(w.getDate() - w.getDay()); w.setHours(0,0,0,0); return w.getTime() }
+  const weeksWithData = new Set(records.map(r => { const d = parseDMY(r.date); return d ? getWeekStart(d) : null }).filter(Boolean))
+  let streak = 0, ws = getWeekStart(today)
+  while (weeksWithData.has(ws)) { streak++; ws -= 7 * 86400000 }
+
+  return (
+    <>
+      {/* Stats row */}
+      <div style={{ display:'flex', gap:10, marginBottom:14 }}>
+        <div style={{ flex:1, textAlign:'center', padding:'10px', background:'var(--bg)', borderRadius:'var(--r-sm)' }}>
+          <p style={{ fontSize:22, fontWeight:700, color:'var(--teal)' }}>{attended}</p>
+          <p style={{ fontSize:11, color:'var(--text-3)' }}>This cycle</p>
+        </div>
+        <div style={{ flex:1, textAlign:'center', padding:'10px', background:'var(--bg)', borderRadius:'var(--r-sm)' }}>
+          <p style={{ fontSize:22, fontWeight:700, color: rate >= 85 ? 'var(--teal)' : rate >= 60 ? 'var(--amber)' : 'var(--coral)' }}>{rate}%</p>
+          <p style={{ fontSize:11, color:'var(--text-3)' }}>Rate</p>
+        </div>
+        <div style={{ flex:1, textAlign:'center', padding:'10px', background:'var(--bg)', borderRadius:'var(--r-sm)' }}>
+          <p style={{ fontSize:22, fontWeight:700, color:'var(--accent)' }}>{streak}</p>
+          <p style={{ fontSize:11, color:'var(--text-3)' }}>Wk streak</p>
+        </div>
+      </div>
+
+      {/* Month nav */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+        <button className="btn btn-ghost btn-icon" onClick={() => setViewDate(new Date(year, month - 1, 1))}><ChevLeftIcon /></button>
+        <p style={{ fontWeight:600, fontSize:14 }}>{monthLabel}</p>
+        <button className="btn btn-ghost btn-icon" onClick={() => setViewDate(new Date(year, month + 1, 1))}><ChevRightIcon /></button>
+      </div>
+
+      {/* Day-of-week header */}
+      <div className="attendance-grid" style={{ marginBottom:3 }}>
+        {['S','M','T','W','T','F','S'].map((d, i) => (
+          <div key={i} style={{ textAlign:'center', fontSize:10, fontWeight:600, color:'var(--text-3)', padding:'2px 0' }}>{d}</div>
+        ))}
+      </div>
+
+      {/* Calendar */}
+      <div className="attendance-grid">
+        {Array.from({ length: firstDOW }).map((_, i) => <div key={`e-${i}`} />)}
+        {Array.from({ length: totalDays }).map((_, i) => {
+          const day      = i + 1
+          const cellDate = new Date(year, month, day)
+          const dateStr  = formatDMY(cellDate)
+          const isAtt    = attendedSet.has(dateStr)
+          const isToday  = cellDate.toDateString() === today.toDateString()
+          const isFuture = cellDate > today
+          const startD   = parseDMY(client.startDate)
+          const isBeforeStart = startD && cellDate < startD
+          return (
+            <div key={dateStr}
+              className={`attendance-cell${isToday ? ' attendance-cell--today' : ''}${isFuture || isBeforeStart ? ' attendance-cell--future' : ''}${isAtt ? ' attendance-cell--has-data' : ''}`}
+              onClick={() => !isFuture && !isBeforeStart && onToggle(dateStr, isAtt)}>
+              <span className="attendance-cell-date" style={{ color: isAtt ? 'var(--teal)' : undefined, fontWeight: isAtt ? 700 : undefined }}>{day}</span>
+              {isAtt && <span style={{ width:6, height:6, borderRadius:'50%', background:'var(--teal)', flexShrink:0 }} />}
+            </div>
+          )
+        })}
+      </div>
+    </>
+  )
+}
+
+const ChevLeftIcon  = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
+const ChevRightIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
+
 const CheckIcon   = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
 const ClockIcon   = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
 const DotsIcon    = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="5" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="12" cy="19" r="1.2" fill="currentColor"/></svg>
@@ -405,4 +576,5 @@ const PauseIcon   = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="
 const PlayIcon    = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
 const ArchiveIcon = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
 const TrashIcon   = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-const BackIcon    = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+const BackIcon     = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+const CalendarIcon = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>

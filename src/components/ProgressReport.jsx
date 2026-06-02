@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { DEFAULT_MEASUREMENTS } from '../data/exercises.js'
-import { formatValue, getInitials, avatarColor, groupBy } from '../lib/utils.js'
+import { formatValue, getInitials, avatarColor, groupBy, parseDMY } from '../lib/utils.js'
 import {
   RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer,
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
 } from 'recharts'
 
-export default function ProgressReport({ client, prs, attributes, measurements }) {
+export default function ProgressReport({ client, prs, attributes, measurements, attendance = [] }) {
   const [selectedEx, setSelectedEx] = useState(null)
 
   const prByEx      = groupBy(prs, 'exerciseName')
@@ -25,6 +25,11 @@ export default function ProgressReport({ client, prs, attributes, measurements }
 
   return (
     <>
+      {/* Attendance section */}
+      {attendance.length > 0 && client?.membershipType && (
+        <AttendanceSummary client={client} attendance={attendance} />
+      )}
+
       {/* Summary stats */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(2, minmax(0,1fr))', gap:10, marginBottom:16 }}>
         <StatCard label="PRs logged"         value={prs.length}                   color="var(--accent)" />
@@ -61,7 +66,7 @@ export default function ProgressReport({ client, prs, attributes, measurements }
               <RadarChart data={radarData} margin={{ top:10, right:20, bottom:10, left:20 }}>
                 <PolarGrid stroke="var(--border)" />
                 <PolarAngleAxis dataKey="attr" tick={{ fontSize:11, fill:'var(--text-2)' }} />
-                <Radar dataKey="score" stroke="#7F77DD" fill="#7F77DD" fillOpacity={0.25} strokeWidth={2} dot={{ r:3, fill:'#7F77DD' }} />
+                <Radar dataKey="score" stroke="#C4633A" fill="#7F77DD" fillOpacity={0.25} strokeWidth={2} dot={{ r:3, fill:'#7F77DD' }} />
               </RadarChart>
             </ResponsiveContainer>
           </div>
@@ -86,7 +91,7 @@ export default function ProgressReport({ client, prs, attributes, measurements }
                   <XAxis dataKey="date" tick={{ fontSize:10, fill:'var(--text-3)' }} />
                   <YAxis tick={{ fontSize:10, fill:'var(--text-3)' }} />
                   <Tooltip contentStyle={tooltipStyle} />
-                  <Line type="monotone" dataKey="value" stroke="#7F77DD" strokeWidth={2.5} dot={{ r:4, fill:'#7F77DD' }} activeDot={{ r:6 }} />
+                  <Line type="monotone" dataKey="value" stroke="#C4633A" strokeWidth={2.5} dot={{ r:4, fill:'#7F77DD' }} activeDot={{ r:6 }} />
                 </LineChart>
               </ResponsiveContainer>
             )}
@@ -115,6 +120,39 @@ export default function ProgressReport({ client, prs, attributes, measurements }
       <p style={{ fontSize:11, color:'var(--text-3)', textAlign:'center', paddingBottom:8 }}>
         Coach by Sam · {new Date().toLocaleDateString()}
       </p>
+    </>
+  )
+}
+
+function AttendanceSummary({ client, attendance }) {
+  const now      = new Date()
+  const monthStr = `${String(now.getMonth() + 1).padStart(2, '0')}-${now.getFullYear()}`
+  const thisMonth = attendance.filter(r => r.date && r.date.slice(3) === monthStr)
+  const attended  = thisMonth.length
+  const expected  = Math.max(1, Math.round((now.getDate() / 7) * client.membershipType))
+  const rate      = Math.min(100, Math.round((attended / expected) * 100))
+
+  const getWeekStart = (d) => { const w = new Date(d); w.setDate(w.getDate() - w.getDay()); w.setHours(0,0,0,0); return w.getTime() }
+  const weeksWithData = new Set(attendance.map(r => { const d = parseDMY(r.date); return d ? getWeekStart(d) : null }).filter(Boolean))
+  let streak = 0, ws = getWeekStart(now)
+  while (weeksWithData.has(ws)) { streak++; ws -= 7 * 86400000 }
+
+  return (
+    <>
+      <p className="section-title" style={{ marginBottom:8 }}>Attendance this month</p>
+      <div className="card" style={{ marginBottom:16 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+          <span style={{ fontSize:13, color:'var(--text-2)' }}>{attended} of {expected} sessions</span>
+          <span style={{ fontSize:13, fontWeight:700, color: rate >= 85 ? 'var(--teal)' : rate >= 60 ? 'var(--amber)' : 'var(--coral)' }}>{rate}%</span>
+        </div>
+        <div style={{ height:6, borderRadius:3, background:'var(--border)', overflow:'hidden' }}>
+          <div style={{ height:'100%', width:`${rate}%`, borderRadius:3, transition:'width 0.4s',
+            background: rate >= 85 ? 'var(--teal)' : rate >= 60 ? 'var(--amber)' : 'var(--coral)' }} />
+        </div>
+        {streak > 0 && (
+          <p style={{ fontSize:12, color:'var(--text-3)', marginTop:8 }}>🔥 {streak}-week streak</p>
+        )}
+      </div>
     </>
   )
 }

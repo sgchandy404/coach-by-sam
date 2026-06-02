@@ -4,7 +4,7 @@ import { getClients, getAttributes, addAttributes, deleteAttributes } from '../l
 import { DEFAULT_ATTRIBUTES } from '../data/exercises.js'
 import ClientPicker from '../components/ClientPicker.jsx'
 
-const scoreColor = (s) => s >= 8 ? '#1D9E75' : s >= 6 ? '#7F77DD' : s >= 4 ? '#BA7517' : '#E24B4A'
+const scoreColor = (s) => s >= 8 ? '#5C7A4E' : s >= 6 ? '#C4633A' : s >= 4 ? '#A8720A' : '#B84C2A'
 
 export default function AttributesPage({ clientId, setClientId }) {
   const [clients, setClients] = useState([])

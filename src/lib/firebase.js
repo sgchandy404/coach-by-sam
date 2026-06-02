@@ -5,13 +5,14 @@ import { getFirestore } from 'firebase/firestore'
 // Paste your Firebase project config here.
 // Get it from: Firebase Console → Project Settings → Your apps → Web app
 const firebaseConfig = {
-  apiKey:            'YOUR_API_KEY',
-  authDomain:        'YOUR_PROJECT_ID.firebaseapp.com',
-  projectId:         'YOUR_PROJECT_ID',
-  storageBucket:     'YOUR_PROJECT_ID.appspot.com',
-  messagingSenderId: 'YOUR_SENDER_ID',
-  appId:             'YOUR_APP_ID',
-}
+  apiKey: "AIzaSyAl3oKG99cQubleHUW3Hd8zGMPTSbhNCFM",
+  authDomain: "coach-by-sam.firebaseapp.com",
+  projectId: "coach-by-sam",
+  storageBucket: "coach-by-sam.firebasestorage.app",
+  messagingSenderId: "123251915114",
+  appId: "1:123251915114:web:1bc4d4f92fbf7c17dfcd13",
+  measurementId: "G-521BXY91GV"
+};
 
 const app = initializeApp(firebaseConfig)
 

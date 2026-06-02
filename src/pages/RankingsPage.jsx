@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { getClients, getPRs, getAttributes, getMeasurements } from '../lib/firestore.js'
+import { getClients, getPRs, getAttributes, getMeasurements, getAttendance } from '../lib/firestore.js'
 import { evaluateClient, SAM_LABELS, CLIENT_LABELS, GOAL_TYPES, STATUS, DEFAULT_THRESHOLDS } from '../lib/evaluate.js'
 import { DEFAULT_MEASUREMENTS } from '../data/exercises.js'
 import { getInitials, avatarColor, formatValue } from '../lib/utils.js'
@@ -20,16 +20,16 @@ export default function RankingsPage() {
       setClients(active)
       // Load all data in parallel
       const results = await Promise.all(active.map(async c => {
-        const [prs, attrs, measures] = await Promise.all([
-          getPRs(c.id), getAttributes(c.id), getMeasurements(c.id)
+        const [prs, attrs, measures, attendance] = await Promise.all([
+          getPRs(c.id), getAttributes(c.id), getMeasurements(c.id), getAttendance(c.id)
         ])
-        return { id: c.id, prs, attrs, measures }
+        return { id: c.id, prs, attrs, measures, attendance }
       }))
       const dataMap = {}, evalMap = {}
       results.forEach(r => {
         const client = active.find(c => c.id === r.id)
         dataMap[r.id] = r
-        evalMap[r.id] = evaluateClient(client, r.prs, r.attrs, r.measures)
+        evalMap[r.id] = evaluateClient(client, r.prs, r.attrs, r.measures, r.attendance)
       })
       setData(dataMap)
       setEvals(evalMap)
@@ -73,9 +73,10 @@ export default function RankingsPage() {
                     <p style={{ fontWeight:600, fontSize:15, marginBottom:5 }}>{c.name}</p>
                     {ev ? (
                       <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-                        <DimPill label="Perf" status={ev.performance.status} />
+                        <DimPill label="Perf"     status={ev.performance.status} />
                         <DimPill label="Physical" status={ev.physical.status} />
-                        <DimPill label="Fitness" status={ev.fitness.status} />
+                        <DimPill label="Fitness"  status={ev.fitness.status} />
+                        <DimPill label="Attend"   status={ev.attendance?.status} />
                       </div>
                     ) : <p style={{ fontSize:12, color:'var(--text-3)' }}>Evaluating…</p>}
                   </div>
@@ -159,9 +160,10 @@ function ClientDetail({ client, clientData, evaluation, onBack }) {
           <div className="section">
             <div className="section-title">Breakdown</div>
             <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-              <DimensionCard title="Performance" icon="🏋️" dim={ev.performance} labels={labels} isSam={!clientView} />
-              <DimensionCard title="Physical"    icon="📏" dim={ev.physical}    labels={labels} isSam={!clientView} />
-              <DimensionCard title="Fitness"     icon="⚡" dim={ev.fitness}     labels={labels} isSam={!clientView} />
+              <DimensionCard title="Performance" icon="🏋️" dim={ev.performance}       labels={labels} isSam={!clientView} />
+              <DimensionCard title="Physical"    icon="📏" dim={ev.physical}          labels={labels} isSam={!clientView} />
+              <DimensionCard title="Fitness"     icon="⚡" dim={ev.fitness}            labels={labels} isSam={!clientView} />
+              {ev.attendance && <DimensionCard title="Attendance" icon="📅" dim={ev.attendance} labels={labels} isSam={!clientView} />}
             </div>
           </div>
         </>
@@ -222,7 +224,8 @@ function ShareableCard({ client, evaluation, onClose }) {
     { title:'Performance', status: ev?.performance?.status },
     { title:'Physical',    status: ev?.physical?.status    },
     { title:'Fitness',     status: ev?.fitness?.status     },
-  ].filter(d => d.status !== STATUS.INSUFFICIENT)
+    { title:'Attendance',  status: ev?.attendance?.status  },
+  ].filter(d => d.status && d.status !== STATUS.INSUFFICIENT)
 
   const goalLabel = GOAL_TYPES.find(g => g.id === (client.goalType || 'general'))?.label || 'General fitness'
   const overall   = CLIENT_LABELS[ev?.overall] || CLIENT_LABELS.insufficient
@@ -322,8 +325,8 @@ function DimPill({ label, status }) {
 
 function OverallDot({ status }) {
   const colors = {
-    improving:'#1D9E75', stagnant:'#BA7517', declining:'#D85A30',
-    needs_attention:'#A32D2D', insufficient:'#B4B2A9'
+    improving:'#5C7A4E', stagnant:'#A8720A', declining:'#B84C2A',
+    needs_attention:'#7A3218', insufficient:'#C4B8A8'
   }
   return <div style={{ width:10, height:10, borderRadius:'50%', background: colors[status] || colors.insufficient, flexShrink:0 }} />
 }

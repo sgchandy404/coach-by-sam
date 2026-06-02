@@ -1,6 +1,6 @@
 import { db } from './firebase.js'
 import {
-  collection, doc, addDoc, updateDoc, deleteDoc,
+  collection, doc, addDoc, updateDoc, deleteDoc, setDoc,
   getDocs, writeBatch, query, orderBy, serverTimestamp,
 } from 'firebase/firestore'
 
@@ -17,7 +17,7 @@ export const updateClient = (id, data) =>
 
 // Full delete: removes client doc + all subcollection documents
 export const deleteClientFull = async (id) => {
-  const subcols = ['prs', 'attributes', 'measurements']
+  const subcols = ['prs', 'attributes', 'measurements', 'attendance']
   const batch = writeBatch(db)
   for (const sub of subcols) {
     const snap = await getDocs(collection(db, 'clients', id, sub))
@@ -60,6 +60,21 @@ export const addMeasurement = (clientId, data) =>
 export const deleteMeasurement = (clientId, id) =>
   deleteDoc(doc(db, 'clients', clientId, 'measurements', id))
 
+// ── Attendance ────────────────────────────────────────────────────────────────
+// doc ID = DD-MM-YYYY; one doc per attended date per client
+export const getAttendance = (clientId) =>
+  getDocs(collection(db, 'clients', clientId, 'attendance'))
+    .then(s => s.docs.map(d => ({ id: d.id, date: d.id, ...d.data() })))
+
+export const markAttended = (clientId, date) =>
+  setDoc(doc(db, 'clients', clientId, 'attendance', date), { date, createdAt: serverTimestamp() })
+
+export const unmarkAttended = (clientId, date) =>
+  deleteDoc(doc(db, 'clients', clientId, 'attendance', date))
+
+export const updateAttendanceExercises = (clientId, date, exercises) =>
+  updateDoc(doc(db, 'clients', clientId, 'attendance', date), { exercises })
+
 // ── Custom exercises ──────────────────────────────────────────────────────────
 export const getCustomExercises = () =>
   getDocs(collection(db, 'customExercises'))
@@ -74,7 +89,7 @@ export const deleteCustomExercise = (id) =>
 // ── Seed / flush helpers ──────────────────────────────────────────────────────
 // Seed: write a batch of pre-built client docs + subcollection entries
 export const seedDummyData = async (clientsData) => {
-  for (const { client, prs, attributes, measurements } of clientsData) {
+  for (const { client, prs, attributes, measurements, attendance = [] } of clientsData) {
     const cRef = await addDoc(collection(db, 'clients'), { ...client, createdAt: serverTimestamp() })
     const batch = writeBatch(db)
     for (const pr of prs)
@@ -83,6 +98,8 @@ export const seedDummyData = async (clientsData) => {
       batch.set(doc(collection(db, 'clients', cRef.id, 'attributes')), { ...a, createdAt: serverTimestamp() })
     for (const m of measurements)
       batch.set(doc(collection(db, 'clients', cRef.id, 'measurements')), { ...m, createdAt: serverTimestamp() })
+    for (const att of attendance)
+      batch.set(doc(db, 'clients', cRef.id, 'attendance', att.date), { ...att, createdAt: serverTimestamp() })
     await batch.commit()
   }
 }

@@ -6,6 +6,7 @@ import PRLogPage        from './pages/PRLogPage.jsx'
 import AttributesPage   from './pages/AttributesPage.jsx'
 import MeasurementsPage from './pages/MeasurementsPage.jsx'
 import RankingsPage     from './pages/RankingsPage.jsx'
+import AttendancePage   from './pages/AttendancePage.jsx'
 import SettingsPage     from './pages/SettingsPage.jsx'
 import BottomNav        from './components/BottomNav.jsx'
 
@@ -31,6 +32,7 @@ export default function App() {
         {tab === 'attributes'   && <AttributesPage   {...clientProps} />}
         {tab === 'measurements' && <MeasurementsPage {...clientProps} />}
         {tab === 'rankings'     && <RankingsPage />}
+        {tab === 'attendance'   && <AttendancePage />}
       </div>
       <BottomNav tab={tab} setTab={setTab} onSettings={() => setShowSettings(true)} />
       {showSettings && <SettingsPage onDone={() => setShowSettings(false)} />}
@@ -40,10 +42,13 @@ export default function App() {
 
 function Splash() {
   return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:'100dvh' }}>
+    <div style={{
+      display:'flex', alignItems:'center', justifyContent:'center', minHeight:'100dvh',
+      background:'linear-gradient(160deg, #FAF7F2 0%, #F3EDE3 50%, #EDE4D5 100%)',
+    }}>
       <div style={{ textAlign:'center', color:'var(--text-3)' }}>
-        <div style={{ fontSize:40, marginBottom:8 }}>💪</div>
-        <p style={{ fontSize:14 }}>Loading…</p>
+        <div style={{ fontSize:36, marginBottom:10 }}>💪</div>
+        <p style={{ fontSize:13, letterSpacing:'0.5px' }}>Loading…</p>
       </div>
     </div>
   )
@@ -53,21 +58,43 @@ function LoginScreen() {
   const [err, setErr] = useState('')
   const login = async () => {
     try { await signInWithPopup(auth, provider) }
-    catch { setErr('Sign-in failed. Please try again.') }
+    catch (e) {
+      console.error('AUTH ERROR:', e.code, e.message)
+      setErr(e.code + ' — ' + e.message)
+    }
   }
   return (
-    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:'100dvh', padding:'32px 24px', gap:24 }}>
+    <div style={{
+      display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+      minHeight:'100dvh', padding:'32px 24px', gap:28,
+      background:'linear-gradient(160deg, #FAF7F2 0%, #F3EDE3 50%, #EDE4D5 100%)',
+    }}>
       <div style={{ textAlign:'center' }}>
-        <div style={{ fontSize:52, marginBottom:12 }}>💪</div>
-        <h1 style={{ fontSize:26, fontWeight:700, letterSpacing:'-0.5px', marginBottom:6 }}>Coach by Sam</h1>
-        <p style={{ color:'var(--text-2)', fontSize:14 }}>Track client progress, celebrate wins.</p>
+        <div style={{
+          width:72, height:72, borderRadius:'50%',
+          background:'linear-gradient(135deg, #C4633A, #A8720A)',
+          display:'flex', alignItems:'center', justifyContent:'center',
+          fontSize:32, margin:'0 auto 20px',
+          boxShadow:'0 6px 24px rgba(196,99,58,0.25)',
+        }}>💪</div>
+        <h1 style={{
+          fontFamily:'Playfair Display, serif',
+          fontSize:32, fontWeight:700, letterSpacing:'-0.5px', marginBottom:8,
+          color:'#1E1A16',
+        }}>Coach by Sam</h1>
+        <p style={{ color:'#6B5F52', fontSize:15, fontWeight:300, lineHeight:1.6 }}>
+          Track client progress,<br/>celebrate every win.
+        </p>
       </div>
-      {err && <p style={{ color:'var(--coral)', fontSize:13 }}>{err}</p>}
-      <button className="btn btn-primary btn-full" onClick={login} style={{ maxWidth:280, gap:10, fontSize:15 }}>
+      {err && (
+        <p style={{ color:'var(--coral)', fontSize:12, textAlign:'center', maxWidth:280, lineHeight:1.5 }}>{err}</p>
+      )}
+      <button className="btn btn-primary btn-full" onClick={login}
+        style={{ maxWidth:300, gap:10, fontSize:15, padding:'13px 24px', borderRadius:12 }}>
         <GoogleIcon /> Sign in with Google
       </button>
-      <p style={{ fontSize:12, color:'var(--text-3)', textAlign:'center', maxWidth:240 }}>
-        Only authorised accounts can access this app.
+      <p style={{ fontSize:12, color:'#A8998A', textAlign:'center', maxWidth:220, lineHeight:1.6 }}>
+        Access is restricted to authorised accounts only.
       </p>
     </div>
   )

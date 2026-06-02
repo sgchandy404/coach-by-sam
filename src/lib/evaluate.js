@@ -28,22 +28,29 @@ export const STATUS = {
 
 // Sam sees this; clients see CLIENT_LABELS
 export const SAM_LABELS = {
-  improving:         { text: 'Improving',        color: '#1D9E75', bg: '#E1F5EE', border: '#9FE1CB' },
-  stagnant:          { text: 'Stagnant',          color: '#BA7517', bg: '#FAEEDA', border: '#FAC775' },
-  declining:         { text: 'Declining',         color: '#D85A30', bg: '#FAECE7', border: '#F0997B' },
-  needs_attention:   { text: 'Needs attention',   color: '#A32D2D', bg: '#FCEBEB', border: '#F7C1C1' },
-  insufficient:      { text: 'Not enough data',   color: '#9a9a94', bg: '#F1EFE8', border: '#D3D1C7' },
+  improving:         { text: 'Improving',        color: '#3A5C2E', bg: '#EBF2E7', border: '#B5D4A8' },
+  stagnant:          { text: 'Stagnant',          color: '#7A5200', bg: '#FDF3DC', border: '#E8C97A' },
+  declining:         { text: 'Declining',         color: '#8B2E10', bg: '#FAEAE4', border: '#E8A88A' },
+  needs_attention:   { text: 'Needs attention',   color: '#5C3A1A', bg: '#F5EDE3', border: '#D4B898' },
+  insufficient:      { text: 'Not enough data',   color: '#A8998A', bg: '#F5F0E8', border: '#DDD5C8' },
 }
 
 export const CLIENT_LABELS = {
-  improving:         { text: 'On track',           color: '#1D9E75', bg: '#E1F5EE', border: '#9FE1CB' },
-  stagnant:          { text: 'Maintaining',         color: '#BA7517', bg: '#FAEEDA', border: '#FAC775' },
-  declining:         { text: "Let's refocus here",  color: '#D85A30', bg: '#FAECE7', border: '#F0997B' },
-  needs_attention:   { text: 'Building momentum',   color: '#7F77DD', bg: '#EEEDFE', border: '#CECBF6' },
-  insufficient:      { text: null,                  color: '#9a9a94', bg: '#F1EFE8', border: '#D3D1C7' },
+  improving:         { text: 'On track',           color: '#3A5C2E', bg: '#EBF2E7', border: '#B5D4A8' },
+  stagnant:          { text: 'Maintaining',         color: '#7A5200', bg: '#FDF3DC', border: '#E8C97A' },
+  declining:         { text: "Let's refocus here",  color: '#8B2E10', bg: '#FAEAE4', border: '#E8A88A' },
+  needs_attention:   { text: 'Building momentum',   color: '#5C3A1A', bg: '#F5EDE3', border: '#D4B898' },
+  insufficient:      { text: null,                  color: '#A8998A', bg: '#F5F0E8', border: '#DDD5C8' },
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+const parseDMY = (str) => {
+  if (!str) return null
+  const [d, m, y] = str.split('-').map(Number)
+  if (!d || !m || !y) return null
+  return new Date(y, m - 1, d)
+}
 
 const daysBetween = (dateStr1, dateStr2) => {
   const d1 = new Date(dateStr1), d2 = new Date(dateStr2)
@@ -259,21 +266,48 @@ export const evaluateFitness = (attributes, thresholds, goalType) => {
   return { status: overall, details }
 }
 
+// ── Attendance evaluation ─────────────────────────────────────────────────────
+
+export const evaluateAttendance = (attendanceRecords, membershipType, windowDays = 30) => {
+  if (!membershipType || !attendanceRecords?.length) return { status: STATUS.INSUFFICIENT, details: [] }
+
+  const now    = new Date()
+  const cutoff = new Date(now)
+  cutoff.setDate(cutoff.getDate() - windowDays)
+
+  const inWindow = attendanceRecords.filter(r => {
+    const d = parseDMY(r.date)
+    return d && d >= cutoff && d <= now
+  })
+
+  if (inWindow.length < 2) return { status: STATUS.INSUFFICIENT, details: [] }
+
+  const expected = Math.round((windowDays / 7) * membershipType)
+  const attended = inWindow.length
+  const rate     = attended / expected
+  const status   = rate >= 0.85 ? STATUS.IMPROVING
+                 : rate >= 0.6  ? STATUS.STAGNANT
+                 : STATUS.DECLINING
+
+  return { status, details: [{ attended, expected, rate: +(rate * 100).toFixed(0) }] }
+}
+
 // ── Full client evaluation ─────────────────────────────────────────────────────
 
-export const evaluateClient = (client, prs, attributes, measurements) => {
+export const evaluateClient = (client, prs, attributes, measurements, attendanceRecords = []) => {
   const goalType   = client.goalType || 'general'
   const thresholds = client.evaluationSettings || DEFAULT_THRESHOLDS
 
   const performance = evaluatePerformance(prs, thresholds, goalType)
   const physical    = evaluatePhysical(measurements, thresholds, goalType)
   const fitness     = evaluateFitness(attributes, thresholds, goalType)
+  const attendance  = evaluateAttendance(attendanceRecords, client.membershipType)
 
-  // Overall: worst of the three non-insufficient dimensions
+  // Overall: worst of the four non-insufficient dimensions
   const priority = [STATUS.DECLINING, STATUS.NEEDS_ATTN, STATUS.STAGNANT, STATUS.IMPROVING]
-  const active = [performance, physical, fitness].filter(d => d.status !== STATUS.INSUFFICIENT)
+  const active = [performance, physical, fitness, attendance].filter(d => d.status !== STATUS.INSUFFICIENT)
   const overall = active.length === 0 ? STATUS.INSUFFICIENT
     : priority.find(s => active.some(d => d.status === s)) || STATUS.IMPROVING
 
-  return { overall, performance, physical, fitness, goalType }
+  return { overall, performance, physical, fitness, attendance, goalType }
 }
