@@ -194,7 +194,7 @@ function DimensionCard({ title, icon, dim, labels, isSam }) {
         <div style={{ borderTop:'1px solid var(--border)' }}>
           {dim.details.map((d, i) => {
             const metricLabel = d.name || MEASURE_LABELS[d.field] || d.attr || d.field
-            const lbl = labels[d.status]
+            const lbl = labels[d.status] || labels.insufficient
             const delta = d.change != null ? `${d.change > 0 ? '+' : ''}${d.change}%`
                         : d.diff  != null ? `${d.diff  > 0 ? '+' : ''}${d.diff} pts`
                         : d.daysSince != null ? `${d.daysSince}d ago` : ''
