@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth'
+import { onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult } from 'firebase/auth'
 import { auth, provider } from './lib/firebase.js'
 import ClientsPage      from './pages/ClientsPage.jsx'
 import PRLogPage        from './pages/PRLogPage.jsx'
@@ -17,7 +17,10 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [selectedClientId, setSelectedClientId] = useState(null)
 
-  useEffect(() => onAuthStateChanged(auth, u => { setUser(u); setLoading(false) }), [])
+  useEffect(() => {
+    getRedirectResult(auth).catch(() => {})
+    return onAuthStateChanged(auth, u => { setUser(u); setLoading(false) })
+  }, [])
 
   if (loading) return <Splash />
   if (!user)   return <LoginScreen />
@@ -56,9 +59,18 @@ function Splash() {
 
 function LoginScreen() {
   const [err, setErr] = useState('')
+
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+
   const login = async () => {
-    try { await signInWithPopup(auth, provider) }
-    catch (e) {
+    try {
+      if (isIOS) {
+        await signInWithRedirect(auth, provider)
+      } else {
+        await signInWithPopup(auth, provider)
+      }
+    } catch (e) {
       console.error('AUTH ERROR:', e.code, e.message)
       setErr(e.code + ' — ' + e.message)
     }
