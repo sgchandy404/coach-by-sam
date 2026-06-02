@@ -18,8 +18,17 @@ export default function App() {
   const [selectedClientId, setSelectedClientId] = useState(null)
 
   useEffect(() => {
-    getRedirectResult(auth).catch(() => {})
-    return onAuthStateChanged(auth, u => { setUser(u); setLoading(false) })
+    let unsubscribe = () => {}
+    const init = async () => {
+      try {
+        await getRedirectResult(auth)
+      } catch (e) {
+        console.error('Redirect result error:', e.code, e.message)
+      }
+      unsubscribe = onAuthStateChanged(auth, u => { setUser(u); setLoading(false) })
+    }
+    init()
+    return () => unsubscribe()
   }, [])
 
   if (loading) return <Splash />
