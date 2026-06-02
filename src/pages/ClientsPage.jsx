@@ -99,29 +99,51 @@ export default function ClientsPage({ clientId, setClientId, setTab }) {
             <p>{tab === 'active' ? 'No active clients.' : tab === 'paused' ? 'No paused or deactivated clients.' : 'No clients yet.'}</p>
           </div>
         ) : (
-          <div className="card" style={{ padding:0 }}>
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
             {visible.map(c => {
+              const accentColor = avatarColor(c.name)
               const paid = c.paymentStatus === 'paid'
               const pill = statusPill[c.status]
               return (
-                <div key={c.id} className="list-row"
-                  style={{ padding:'14px 16px', cursor:'pointer', background: clientId === c.id ? 'var(--accent-light)' : 'transparent' }}
+                <div key={c.id}
+                  style={{
+                    position: 'relative',
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '14px 14px 14px 16px',
+                    borderRadius: 'var(--r-md)',
+                    border: '1px solid var(--border)',
+                    borderLeft: `3px solid ${accentColor}`,
+                    background: clientId === c.id
+                      ? 'var(--accent-light)'
+                      : 'linear-gradient(135deg, #FFFFFF 0%, #FDFAF6 100%)',
+                    boxShadow: '0 2px 8px rgba(90,60,30,0.06)',
+                    cursor: 'pointer',
+                  }}
                   onClick={() => { setClientId(c.id); setTab('prs') }}>
-                  <div className="avatar" style={{ background: avatarColor(c.name) }}>{getInitials(c.name)}</div>
+                  <div className="avatar"
+                    style={{ background: accentColor, width: 46, height: 46, fontSize: 14,
+                      boxShadow: `0 0 0 3px ${accentColor}4D` }}>
+                    {getInitials(c.name)}
+                  </div>
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
                       <p style={{ fontWeight:600, fontSize:15 }}>{c.name}</p>
                       {pill && <span style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:100, background:pill.bg, color:pill.color, border:`1px solid ${pill.border}` }}>{pill.label}</span>}
                     </div>
-                    {c.goal && <p style={{ fontSize:12, color:'var(--text-2)', marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.goal}</p>}
+                    {c.goal && <p style={{ fontSize:13, color:'var(--text-2)', marginTop:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.goal}</p>}
                   </div>
                   <button onClick={e => togglePayment(e, c)}
-                    style={{ display:'flex', alignItems:'center', gap:5, padding:'5px 10px', borderRadius:100, flexShrink:0, fontSize:12, fontWeight:600, cursor:'pointer', transition:'all 0.15s',
-                      border: paid ? '1.5px solid #9FE1CB' : '1.5px solid #FAC775',
-                      background: paid ? '#E1F5EE' : '#FAEEDA',
-                      color: paid ? '#085041' : '#633806' }}>
-                    {paid ? <CheckIcon /> : <ClockIcon />}
-                    {paid ? 'Paid' : 'Unpaid'}
+                    style={{ display:'flex', alignItems:'center', gap:5, padding:'5px 8px',
+                      background:'none', border:'none', cursor:'pointer', flexShrink:0 }}>
+                    <span style={{
+                      width:8, height:8, borderRadius:'50%', flexShrink:0, display:'inline-block',
+                      background: paid ? 'var(--teal)' : 'var(--amber)',
+                      animation: paid ? 'none' : 'unpaid-pulse 1.8s ease-in-out infinite',
+                    }} />
+                    <span style={{ fontSize:12, fontWeight:600,
+                      color: paid ? 'var(--teal-text)' : 'var(--amber-text)' }}>
+                      {paid ? 'Paid' : 'Unpaid'}
+                    </span>
                   </button>
                   <button className="btn btn-ghost btn-icon" onClick={e => { e.stopPropagation(); setManaging(c) }}
                     style={{ color:'var(--text-3)', marginLeft:2 }}>
