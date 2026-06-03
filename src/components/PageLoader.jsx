@@ -10,34 +10,37 @@ export function BrandIcon({ size = 48 }) {
       xmlns="http://www.w3.org/2000/svg"
     >
       <defs>
-        <linearGradient id="bg" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
-          <stop offset="0%"   stopColor="#C4633A" />
+        <linearGradient id="brand-bg" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+          <stop offset="0%"  stopColor="#C4633A" />
           <stop offset="100%" stopColor="#9E4E22" />
-        </linearGradient>
-        <linearGradient id="inner" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
-          <stop offset="0%"   stopColor="#D97B4F" />
-          <stop offset="100%" stopColor="#C4633A" />
         </linearGradient>
       </defs>
 
-      {/* Outer circle — badge shape */}
-      <circle cx="24" cy="24" r="23" fill="url(#bg)" />
+      {/* Badge circle */}
+      <circle cx="24" cy="24" r="23" fill="url(#brand-bg)" />
+      <circle cx="24" cy="24" r="20" stroke="white" strokeOpacity="0.12" strokeWidth="1" fill="none" />
 
-      {/* Subtle inner ring for depth */}
-      <circle cx="24" cy="24" r="20" stroke="white" strokeOpacity="0.1" strokeWidth="1" fill="none" />
-
-      {/* Bold upward chevron */}
-      <polyline
-        points="13,31 24,17 35,31"
+      {/*
+        Bold "S" — drawn as a path so it's crisp at all sizes.
+        Two arcs meeting in the middle, thick rounded stroke.
+        Top arc: curves right then left (C shape)
+        Bottom arc: mirrors it
+      */}
+      <path
+        d="
+          M 31 15
+          C 31 15 28 11 22 12
+          C 16 13 14 17 17 20
+          C 19 22 25 22 28 25
+          C 31 28 31 33 26 35
+          C 21 37 14 34 14 34
+        "
         stroke="white"
-        strokeWidth="4"
+        strokeWidth="3.8"
         strokeLinecap="round"
         strokeLinejoin="round"
         fill="none"
       />
-
-      {/* Small dot above chevron — the goal/star */}
-      <circle cx="24" cy="11" r="2.8" fill="white" fillOpacity="0.9" />
     </svg>
   )
 }
