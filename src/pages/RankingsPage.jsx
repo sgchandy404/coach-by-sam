@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import PageLoader from '../components/PageLoader.jsx'
 import { getClients, getPRs, getAttributes, getMeasurements, getAttendance } from '../lib/firestore.js'
 import { evaluateClient, SAM_LABELS, CLIENT_LABELS, GOAL_TYPES, STATUS, DEFAULT_THRESHOLDS } from '../lib/evaluate.js'
 import { DEFAULT_MEASUREMENTS } from '../data/exercises.js'
@@ -56,7 +57,7 @@ export default function RankingsPage() {
       </div>
 
       {loading ? (
-        <div className="section"><p style={{ color:'var(--text-3)', fontSize:14 }}>Evaluating clients…</p></div>
+        <PageLoader label="Evaluating clients…" />
       ) : clients.length === 0 ? (
         <div className="empty"><p>No active clients yet.</p></div>
       ) : (

@@ -4,6 +4,7 @@ import { getClients, getPRs, addPR, deletePR, getCustomExercises, addCustomExerc
 import { DEFAULT_EXERCISES } from '../data/exercises.js'
 import { formatValue, groupBy } from '../lib/utils.js'
 import ClientPicker from '../components/ClientPicker.jsx'
+import PageLoader from '../components/PageLoader.jsx'
 
 export default function PRLogPage({ clientId, setClientId }) {
   const [clients, setClients]   = useState([])
@@ -39,9 +40,9 @@ export default function PRLogPage({ clientId, setClientId }) {
       </div>
       <ClientPicker clients={clients} selectedId={clientId} onSelect={setClientId} />
 
-      {clientId && (
-        loading ? <div className="section"><p style={{ color:'var(--text-3)', fontSize:14 }}>Loading…</p></div> :
-        prs.length === 0 ? <div className="empty"><p>No PRs logged yet.\nTap + to add the first one.</p></div> :
+      {clientId ? (
+        loading ? <PageLoader label="Loading PRs…" /> :
+        prs.length === 0 ? <div className="empty"><p>No PRs logged yet.{'\n'}Tap + to add the first one.</p></div> :
         Object.entries(grouped).map(([exName, entries]) => (
           <div className="section" key={exName}>
             <div className="section-title">{exName}</div>
@@ -69,6 +70,11 @@ export default function PRLogPage({ clientId, setClientId }) {
             </div>
           </div>
         ))
+      ) : (
+        <NoClientPrompt
+          icon={<TrophyEmptyIcon />}
+          message="Select a client above to view their personal records."
+        />
       )}
 
       {clientId && (
@@ -217,3 +223,23 @@ function AddExerciseModal({ onClose, onSave }) {
 }
 
 const TrashIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+
+const TrophyEmptyIcon = () => (
+  <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M6 9H4a2 2 0 0 1-2-2V5h4"/><path d="M18 9h2a2 2 0 0 0 2-2V5h-4"/>
+    <path d="M6 5h12v5a6 6 0 0 1-12 0V5z"/><path d="M12 16v4"/><path d="M8 20h8"/>
+  </svg>
+)
+
+function NoClientPrompt({ icon, message }) {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', padding: '64px 32px', gap: 14, textAlign: 'center',
+    }}>
+      <div style={{ opacity: 0.6 }}>{icon}</div>
+      <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>No client selected</p>
+      <p style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.65, maxWidth: 220 }}>{message}</p>
+    </div>
+  )
+}

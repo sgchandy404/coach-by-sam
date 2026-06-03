@@ -3,6 +3,7 @@ import { format } from 'date-fns'
 import { getClients, getMeasurements, addMeasurement, deleteMeasurement } from '../lib/firestore.js'
 import { DEFAULT_MEASUREMENTS } from '../data/exercises.js'
 import ClientPicker from '../components/ClientPicker.jsx'
+import PageLoader from '../components/PageLoader.jsx'
 
 export default function MeasurementsPage({ clientId, setClientId }) {
   const [clients, setClients] = useState([])
@@ -39,9 +40,9 @@ export default function MeasurementsPage({ clientId, setClientId }) {
       </div>
       <ClientPicker clients={clients} selectedId={clientId} onSelect={setClientId} />
 
-      {clientId && (
-        loading ? <div className="section"><p style={{ color:'var(--text-3)', fontSize:14 }}>Loading…</p></div> :
-        entries.length === 0 ? <div className="empty"><p>No measurements yet.\nTap + to add the first entry.</p></div> :
+      {clientId ? (
+        loading ? <PageLoader label="Loading measurements…" /> :
+        entries.length === 0 ? <div className="empty"><p>No measurements yet.{'\n'}Tap + to add the first entry.</p></div> :
         entries.map((entry, idx) => (
           <div className="section" key={entry.id}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
@@ -70,6 +71,11 @@ export default function MeasurementsPage({ clientId, setClientId }) {
             </div>
           </div>
         ))
+      ) : (
+        <NoClientPrompt
+          icon={<RulerEmptyIcon />}
+          message="Select a client above to view their body measurements."
+        />
       )}
 
       {clientId && <button className="fab" onClick={() => setShowAdd(true)} aria-label="Add measurements">+</button>}
@@ -129,3 +135,23 @@ function AddMeasurementsModal({ onClose, onSave }) {
 }
 
 const TrashIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+
+const RulerEmptyIcon = () => (
+  <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.4 2.4 0 0 1 0-3.4l2.6-2.6a2.4 2.4 0 0 1 3.4 0z"/>
+    <path d="m14.5 12.5 2-2"/><path d="m11.5 9.5 2-2"/><path d="m8.5 6.5 2-2"/>
+  </svg>
+)
+
+function NoClientPrompt({ icon, message }) {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', padding: '64px 32px', gap: 14, textAlign: 'center',
+    }}>
+      <div style={{ opacity: 0.6 }}>{icon}</div>
+      <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>No client selected</p>
+      <p style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.65, maxWidth: 220 }}>{message}</p>
+    </div>
+  )
+}
