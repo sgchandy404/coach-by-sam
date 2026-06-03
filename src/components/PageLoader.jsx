@@ -20,27 +20,19 @@ export function BrandIcon({ size = 48 }) {
       <circle cx="24" cy="24" r="23" fill="url(#brand-bg)" />
       <circle cx="24" cy="24" r="20" stroke="white" strokeOpacity="0.12" strokeWidth="1" fill="none" />
 
-      {/*
-        Bold "S" — drawn as a path so it's crisp at all sizes.
-        Two arcs meeting in the middle, thick rounded stroke.
-        Top arc: curves right then left (C shape)
-        Bottom arc: mirrors it
-      */}
-      <path
-        d="
-          M 31 15
-          C 31 15 28 11 22 12
-          C 16 13 14 17 17 20
-          C 19 22 25 22 28 25
-          C 31 28 31 33 26 35
-          C 21 37 14 34 14 34
-        "
-        stroke="white"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        fill="none"
-      />
+      {/* S in Playfair Display — elegant serif matching the app's headings */}
+      <text
+        x="24"
+        y="32"
+        textAnchor="middle"
+        fontFamily="'Playfair Display', Georgia, serif"
+        fontSize="26"
+        fontWeight="600"
+        fill="white"
+        fillOpacity="0.95"
+      >
+        S
+      </text>
     </svg>
   )
 }
