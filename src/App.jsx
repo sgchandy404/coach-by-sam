@@ -9,6 +9,7 @@ import RankingsPage     from './pages/RankingsPage.jsx'
 import AttendancePage   from './pages/AttendancePage.jsx'
 import SettingsPage     from './pages/SettingsPage.jsx'
 import BottomNav        from './components/BottomNav.jsx'
+import { BrandIcon }   from './components/PageLoader.jsx'
 
 export default function App() {
   const [user, setUser]         = useState(null)
@@ -61,7 +62,9 @@ function Splash() {
       background:'linear-gradient(160deg, #FAF7F2 0%, #F3EDE3 50%, #EDE4D5 100%)',
     }}>
       <div style={{ textAlign:'center', color:'var(--text-3)' }}>
-        <div style={{ fontSize:36, marginBottom:10 }}>💪</div>
+        <div style={{ marginBottom:14, animation:'loader-pulse 1.5s ease-in-out infinite' }}>
+          <BrandIcon size={52} />
+        </div>
         <p style={{ fontSize:13, letterSpacing:'0.5px' }}>Loading…</p>
       </div>
     </div>
@@ -93,13 +96,9 @@ function LoginScreen({ redirectError }) {
       background:'linear-gradient(160deg, #FAF7F2 0%, #F3EDE3 50%, #EDE4D5 100%)',
     }}>
       <div style={{ textAlign:'center' }}>
-        <div style={{
-          width:72, height:72, borderRadius:'50%',
-          background:'linear-gradient(135deg, #C4633A, #A8720A)',
-          display:'flex', alignItems:'center', justifyContent:'center',
-          fontSize:32, margin:'0 auto 20px',
-          boxShadow:'0 6px 24px rgba(196,99,58,0.25)',
-        }}>💪</div>
+        <div style={{ margin:'0 auto 20px', display:'flex', justifyContent:'center' }}>
+          <BrandIcon size={72} />
+        </div>
         <h1 style={{
           fontFamily:'Playfair Display, serif',
           fontSize:32, fontWeight:700, letterSpacing:'-0.5px', marginBottom:8,

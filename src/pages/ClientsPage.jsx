@@ -5,6 +5,7 @@ import { getClients, addClient, updateClient, deleteClientFull, getPRs, getAttri
 import { getInitials, avatarColor, parseDMY, formatDMY, toHTMLDate, fromHTMLDate, nextMondayDMY, getMonthWindow } from '../lib/utils.js'
 import { GOAL_TYPES, DEFAULT_THRESHOLDS } from '../lib/evaluate.js'
 import ProgressReport from '../components/ProgressReport.jsx'
+import PageLoader from '../components/PageLoader.jsx'
 
 const statusPill = {
   active:      null,
@@ -118,7 +119,7 @@ export default function ClientsPage({ clientId, setClientId, setTab }) {
 
       <div className="section">
         {loading ? (
-          <p style={{ color:'var(--text-3)', fontSize:14, padding:'20px 0' }}>Loading…</p>
+          <PageLoader />
         ) : visible.length === 0 ? (
           <div className="empty">
             <p>{tab === 'active' ? 'No active clients.' : tab === 'paused' ? 'No paused or deactivated clients.' : 'No clients yet.'}</p>

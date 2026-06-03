@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { getClients, getAttendance, markAttended, unmarkAttended, updateAttendanceExercises } from '../lib/firestore.js'
 import { DEFAULT_EXERCISES } from '../data/exercises.js'
 import { getInitials, avatarColor, parseDMY, formatDMY, getMonthWindow } from '../lib/utils.js'
+import PageLoader from '../components/PageLoader.jsx'
 
 const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate()
 
@@ -151,9 +152,7 @@ export default function AttendancePage() {
         </div>
       </div>
 
-      {loading && (
-        <p style={{ padding:'16px', color:'var(--text-3)', fontSize:13, textAlign:'center' }}>Loading…</p>
-      )}
+      {loading && <PageLoader />}
 
       {!loading && (
         <p style={{ padding:'12px 16px 0', fontSize:12, color:'var(--text-3)', textAlign:'center' }}>
