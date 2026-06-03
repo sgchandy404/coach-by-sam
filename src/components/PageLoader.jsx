@@ -1,39 +1,30 @@
-// Shared brand icon + full-screen page loader
+// Shared brand wordmark + full-screen page loader
 
-export function BrandIcon({ size = 48 }) {
+export function BrandMark({ size = 'md', dark = false }) {
+  const sizes = { sm: 18, md: 24, lg: 32 }
+  const fs = sizes[size] || size
+  const color = dark ? '#FFFFFF' : '#1AAF96'
+  const lineColor = dark ? 'rgba(255,255,255,0.5)' : '#1AAF96'
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 48 48"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <defs>
-        <linearGradient id="brand-bg" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
-          <stop offset="0%"  stopColor="#C4633A" />
-          <stop offset="100%" stopColor="#9E4E22" />
-        </linearGradient>
-      </defs>
-
-      {/* Badge circle */}
-      <circle cx="24" cy="24" r="23" fill="url(#brand-bg)" />
-      <circle cx="24" cy="24" r="20" stroke="white" strokeOpacity="0.12" strokeWidth="1" fill="none" />
-
-      {/* S in Playfair Display — elegant serif matching the app's headings */}
-      <text
-        x="24"
-        y="32"
-        textAnchor="middle"
-        fontFamily="'Playfair Display', Georgia, serif"
-        fontSize="26"
-        fontWeight="600"
-        fill="white"
-        fillOpacity="0.95"
-      >
-        S
-      </text>
-    </svg>
+    <div style={{ textAlign: 'center' }}>
+      <p style={{
+        fontFamily: "'Playfair Display', Georgia, serif",
+        fontSize: fs,
+        fontWeight: 700,
+        color,
+        letterSpacing: '-0.3px',
+        lineHeight: 1.1,
+      }}>
+        Coach by Sam
+      </p>
+      <div style={{
+        width: 28, height: 2,
+        background: lineColor,
+        borderRadius: 2,
+        margin: '6px auto 0',
+        opacity: 0.6,
+      }} />
+    </div>
   )
 }
 
@@ -41,17 +32,37 @@ export default function PageLoader({ label = 'Loading…' }) {
   return (
     <div style={{
       position: 'fixed', inset: 0,
-      background: 'linear-gradient(160deg, #FAF7F2 0%, #F3EDE3 50%, #EDE4D5 100%)',
+      background: '#F0EDE7',
       display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center',
       zIndex: 500, gap: 20,
     }}>
-      <div style={{ animation: 'loader-pulse 1.5s ease-in-out infinite' }}>
-        <BrandIcon size={64} />
+      {/* Decorative teal arc — Comet-inspired */}
+      <div style={{
+        position: 'absolute',
+        width: 320, height: 320,
+        borderRadius: '50%',
+        border: '1px solid rgba(26,175,150,0.15)',
+        top: '50%', left: '50%',
+        transform: 'translate(-50%, -50%)',
+        pointerEvents: 'none',
+      }} />
+      <div style={{
+        position: 'absolute',
+        width: 200, height: 200,
+        borderRadius: '50%',
+        border: '1px solid rgba(26,175,150,0.10)',
+        top: '50%', left: '50%',
+        transform: 'translate(-50%, -50%)',
+        pointerEvents: 'none',
+      }} />
+      <div style={{ animation: 'loader-pulse 1.6s ease-in-out infinite', position: 'relative', zIndex: 1 }}>
+        <BrandMark size={28} />
       </div>
       <p style={{
-        fontSize: 13, color: 'var(--text-3)',
-        letterSpacing: '0.6px', fontFamily: 'DM Sans, sans-serif',
+        fontSize: 11, color: '#9E9890',
+        letterSpacing: '1px', fontFamily: 'DM Sans, sans-serif',
+        textTransform: 'uppercase', position: 'relative', zIndex: 1,
       }}>
         {label}
       </p>

@@ -3,8 +3,9 @@ import { format } from 'date-fns'
 import { getClients, getAttributes, addAttributes, deleteAttributes } from '../lib/firestore.js'
 import { DEFAULT_ATTRIBUTES } from '../data/exercises.js'
 import ClientPicker from '../components/ClientPicker.jsx'
+import PageLoader from '../components/PageLoader.jsx'
 
-const scoreColor = (s) => s >= 8 ? '#5C7A4E' : s >= 6 ? '#C4633A' : s >= 4 ? '#A8720A' : '#B84C2A'
+const scoreColor = (s) => s >= 8 ? '#1AAF96' : s >= 6 ? '#D4900A' : s >= 4 ? '#D4900A' : '#E05545'
 
 export default function AttributesPage({ clientId, setClientId }) {
   const [clients, setClients] = useState([])
@@ -33,9 +34,9 @@ export default function AttributesPage({ clientId, setClientId }) {
       </div>
       <ClientPicker clients={clients} selectedId={clientId} onSelect={setClientId} />
 
-      {clientId && (
-        loading ? <div className="section"><p style={{ color:'var(--text-3)', fontSize:14 }}>Loading…</p></div> :
-        entries.length === 0 ? <div className="empty"><p>No attribute scores yet.\nTap + to add the first entry.</p></div> :
+      {clientId ? (
+        loading ? <PageLoader label="Loading attributes…" /> :
+        entries.length === 0 ? <div className="empty"><p>No attribute scores yet.{'\n'}Tap + to add the first entry.</p></div> :
         entries.map(entry => (
           <div className="section" key={entry.id}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
@@ -59,6 +60,11 @@ export default function AttributesPage({ clientId, setClientId }) {
             </div>
           </div>
         ))
+      ) : (
+        <NoClientPrompt
+          icon={<RadarEmptyIcon />}
+          message="Select a client above to view their fitness attribute scores."
+        />
       )}
 
       {clientId && <button className="fab" onClick={() => setShowAdd(true)} aria-label="Add scores">+</button>}
@@ -115,3 +121,22 @@ function AddAttributesModal({ onClose, onSave }) {
 }
 
 const TrashIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+
+const RadarEmptyIcon = () => (
+  <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+  </svg>
+)
+
+function NoClientPrompt({ icon, message }) {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', padding: '64px 32px', gap: 14, textAlign: 'center',
+    }}>
+      <div style={{ opacity: 0.6 }}>{icon}</div>
+      <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>No client selected</p>
+      <p style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.65, maxWidth: 220 }}>{message}</p>
+    </div>
+  )
+}

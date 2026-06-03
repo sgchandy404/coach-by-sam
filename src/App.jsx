@@ -9,7 +9,7 @@ import RankingsPage     from './pages/RankingsPage.jsx'
 import AttendancePage   from './pages/AttendancePage.jsx'
 import SettingsPage     from './pages/SettingsPage.jsx'
 import BottomNav        from './components/BottomNav.jsx'
-import { BrandIcon }   from './components/PageLoader.jsx'
+import { BrandMark }   from './components/PageLoader.jsx'
 
 export default function App() {
   const [user, setUser]         = useState(null)
@@ -59,13 +59,13 @@ function Splash() {
   return (
     <div style={{
       display:'flex', alignItems:'center', justifyContent:'center', minHeight:'100dvh',
-      background:'linear-gradient(160deg, #FAF7F2 0%, #F3EDE3 50%, #EDE4D5 100%)',
+      background:'#F0EDE7', position:'relative', overflow:'hidden',
     }}>
-      <div style={{ textAlign:'center', color:'var(--text-3)' }}>
-        <div style={{ marginBottom:14, animation:'loader-pulse 1.5s ease-in-out infinite' }}>
-          <BrandIcon size={52} />
-        </div>
-        <p style={{ fontSize:13, letterSpacing:'0.5px' }}>Loading…</p>
+      {/* Decorative arcs */}
+      <div style={{ position:'absolute', width:340, height:340, borderRadius:'50%', border:'1px solid rgba(26,175,150,0.15)', top:'50%', left:'50%', transform:'translate(-50%,-50%)', pointerEvents:'none' }} />
+      <div style={{ position:'absolute', width:210, height:210, borderRadius:'50%', border:'1px solid rgba(26,175,150,0.10)', top:'50%', left:'50%', transform:'translate(-50%,-50%)', pointerEvents:'none' }} />
+      <div style={{ textAlign:'center', animation:'loader-pulse 1.6s ease-in-out infinite', position:'relative', zIndex:1 }}>
+        <BrandMark size={26} />
       </div>
     </div>
   )
@@ -93,35 +93,34 @@ function LoginScreen({ redirectError }) {
     <div style={{
       display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
       minHeight:'100dvh', padding:'32px 24px', gap:28,
-      background:'linear-gradient(160deg, #FAF7F2 0%, #F3EDE3 50%, #EDE4D5 100%)',
+      background:'#F0EDE7', position:'relative', overflow:'hidden',
     }}>
-      <div style={{ textAlign:'center' }}>
-        <div style={{ margin:'0 auto 20px', display:'flex', justifyContent:'center' }}>
-          <BrandIcon size={72} />
+      {/* Decorative arcs */}
+      <div style={{ position:'absolute', width:'90vw', height:'90vw', maxWidth:400, maxHeight:400, borderRadius:'50%', border:'1px solid rgba(26,175,150,0.14)', top:'50%', left:'50%', transform:'translate(-50%,-50%)', pointerEvents:'none' }} />
+      <div style={{ position:'absolute', width:'60vw', height:'60vw', maxWidth:280, maxHeight:280, borderRadius:'50%', border:'1px solid rgba(26,175,150,0.09)', top:'50%', left:'50%', transform:'translate(-50%,-50%)', pointerEvents:'none' }} />
+
+      <div style={{ textAlign:'center', position:'relative', zIndex:1 }}>
+        <div style={{ marginBottom:20 }}>
+          <BrandMark size={36} />
         </div>
-        <h1 style={{
-          fontFamily:'Playfair Display, serif',
-          fontSize:32, fontWeight:700, letterSpacing:'-0.5px', marginBottom:8,
-          color:'#1E1A16',
-        }}>Coach by Sam</h1>
-        <p style={{ color:'#6B5F52', fontSize:15, fontWeight:300, lineHeight:1.6 }}>
+        <p style={{ color:'#9E9890', fontSize:14, fontWeight:400, lineHeight:1.7, letterSpacing:'0.1px' }}>
           Track client progress,<br/>celebrate every win.
         </p>
       </div>
       {redirectError && (
-        <div style={{ background:'#FAEAE4', border:'1px solid #E8A88A', borderRadius:10, padding:'10px 14px', maxWidth:300, width:'100%' }}>
-          <p style={{ color:'#6B2410', fontSize:11, fontWeight:600, marginBottom:3 }}>Firebase redirect error</p>
-          <p style={{ color:'#6B2410', fontSize:11, lineHeight:1.5, wordBreak:'break-all' }}>{redirectError}</p>
+        <div style={{ background:'#FDE8E5', border:'1px solid rgba(224,85,69,0.25)', borderRadius:12, padding:'10px 14px', maxWidth:300, width:'100%', position:'relative', zIndex:1 }}>
+          <p style={{ color:'#8B1F18', fontSize:11, fontWeight:600, marginBottom:3 }}>Auth error</p>
+          <p style={{ color:'#8B1F18', fontSize:11, lineHeight:1.5, wordBreak:'break-all' }}>{redirectError}</p>
         </div>
       )}
       {err && (
-        <p style={{ color:'var(--coral)', fontSize:12, textAlign:'center', maxWidth:280, lineHeight:1.5 }}>{err}</p>
+        <p style={{ color:'var(--coral)', fontSize:12, textAlign:'center', maxWidth:280, lineHeight:1.5, position:'relative', zIndex:1 }}>{err}</p>
       )}
       <button className="btn btn-primary btn-full" onClick={login}
-        style={{ maxWidth:300, gap:10, fontSize:15, padding:'13px 24px', borderRadius:12 }}>
+        style={{ maxWidth:300, gap:10, fontSize:15, padding:'14px 24px', position:'relative', zIndex:1 }}>
         <GoogleIcon /> Sign in with Google
       </button>
-      <p style={{ fontSize:12, color:'#A8998A', textAlign:'center', maxWidth:220, lineHeight:1.6 }}>
+      <p style={{ fontSize:12, color:'#CBC6BD', textAlign:'center', maxWidth:220, lineHeight:1.6, position:'relative', zIndex:1 }}>
         Access is restricted to authorised accounts only.
       </p>
     </div>

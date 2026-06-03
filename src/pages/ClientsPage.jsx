@@ -96,19 +96,19 @@ export default function ClientsPage({ clientId, setClientId, setTab }) {
         <div style={{
           margin: '0 18px 14px',
           padding: '14px 20px',
-          background: 'linear-gradient(135deg, #F7EAE3 0%, #FDF3DC 100%)',
+          background: 'var(--surface)',
           borderRadius: 14,
-          border: '1px solid #E8D8C8',
+          border: '1px solid var(--border)',
           display: 'flex', gap: 0,
         }}>
           {[
             { value: clients.filter(c => c.status === 'active').length, label: 'Active', color: 'var(--accent)' },
-            { value: unpaidCount, label: 'Unpaid', color: unpaidCount > 0 ? '#B84C2A' : '#5C7A4E' },
+            { value: unpaidCount, label: 'Unpaid', color: unpaidCount > 0 ? 'var(--coral)' : 'var(--teal)' },
             { value: clients.filter(c => c.status === 'paused' || c.status === 'deactivated').length, label: 'Inactive', color: 'var(--text-2)' },
           ].map((stat, i, arr) => (
             <div key={stat.label} style={{ flex: 1, textAlign: 'center', position: 'relative' }}>
               {i < arr.length - 1 && (
-                <div style={{ position: 'absolute', right: 0, top: '10%', height: '80%', width: 1, background: '#E8D8C8' }} />
+                <div style={{ position: 'absolute', right: 0, top: '10%', height: '80%', width: 1, background: 'var(--border)' }} />
               )}
               <p style={{ fontSize: 26, fontWeight: 700, color: stat.color, fontFamily: 'Playfair Display, serif', lineHeight: 1.1 }}>{stat.value}</p>
               <p style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 500, marginTop: 3, textTransform: 'uppercase', letterSpacing: '0.6px' }}>{stat.label}</p>
@@ -134,12 +134,12 @@ export default function ClientsPage({ clientId, setClientId, setTab }) {
                   key={c.id}
                   onClick={() => { setClientId(c.id); setTab('prs') }}
                   style={{
-                    background: clientId === c.id ? 'var(--accent-light)' : 'linear-gradient(135deg, #FFFFFF 0%, #FDFAF6 100%)',
+                    background: clientId === c.id ? 'var(--accent-light)' : 'var(--surface)',
                     borderRadius: 16,
                     border: '1px solid var(--border)',
                     marginBottom: 10,
                     overflow: 'hidden',
-                    boxShadow: '0 2px 12px rgba(90,60,30,0.07)',
+                    boxShadow: 'var(--shadow-sm)',
                     display: 'flex',
                     cursor: 'pointer',
                     transition: 'transform 0.15s, box-shadow 0.15s',
@@ -182,10 +182,10 @@ export default function ClientsPage({ clientId, setClientId, setTab }) {
                       <button onClick={e => togglePayment(e, c)} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
                         <div style={{
                           width: 8, height: 8, borderRadius: '50%',
-                          background: paid ? '#5C7A4E' : '#C4633A',
+                          background: paid ? 'var(--teal)' : 'var(--amber)',
                           animation: paid ? 'none' : 'unpaid-pulse 1.8s ease-in-out infinite',
                         }} />
-                        <span style={{ fontSize: 12, fontWeight: 600, color: paid ? '#5C7A4E' : '#C4633A' }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: paid ? 'var(--teal)' : 'var(--amber)' }}>
                           {paid ? 'Paid' : 'Unpaid'}
                         </span>
                       </button>
