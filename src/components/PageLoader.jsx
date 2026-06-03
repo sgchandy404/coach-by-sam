@@ -36,7 +36,7 @@ export function BrandIcon({ size = 48 }) {
           C 21 37 14 34 14 34
         "
         stroke="white"
-        strokeWidth="3.8"
+        strokeWidth="2.2"
         strokeLinecap="round"
         strokeLinejoin="round"
         fill="none"
