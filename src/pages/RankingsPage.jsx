@@ -77,7 +77,7 @@ export default function RankingsPage() {
                         <DimPill label="Perf"     status={ev.performance.status} />
                         <DimPill label="Physical" status={ev.physical.status} />
                         <DimPill label="Fitness"  status={ev.fitness.status} />
-                        <DimPill label="Attend"   status={ev.attendance?.status} />
+                        <DimPill label="Attendance" status={ev.attendance?.status} />
                       </div>
                     ) : <p style={{ fontSize:12, color:'var(--text-3)' }}>Evaluating…</p>}
                   </div>

@@ -32,8 +32,20 @@ export default function ClientsPage({ clientId, setClientId, setTab }) {
   }
 
   const handleStatusChange = async (id, newStatus) => {
-    await updateClient(id, { status: newStatus })
-    setClients(cs => cs.map(x => x.id === id ? { ...x, status: newStatus } : x))
+    const updates = { status: newStatus }
+
+    if (newStatus === 'active') {
+      const client = clients.find(c => c.id === id)
+      const newStart = formatDMY(new Date())
+      // Preserve the very first startDate as originalStartDate (only if not already saved)
+      if (client?.startDate && !client?.originalStartDate) {
+        updates.originalStartDate = client.startDate
+      }
+      updates.startDate = newStart
+    }
+
+    await updateClient(id, updates)
+    setClients(cs => cs.map(x => x.id === id ? { ...x, ...updates } : x))
     setManaging(null)
   }
 
@@ -401,6 +413,11 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit }
           <label className="form-label">Start date</label>
           <input className="form-input" type="date" value={toHTMLDate(startDate)}
             onChange={e => setStartDate(fromHTMLDate(e.target.value))} />
+          {client.originalStartDate && (
+            <p style={{ fontSize:11, color:'var(--text-3)', marginTop:5 }}>
+              Originally joined: <strong>{client.originalStartDate}</strong> — updated on resume
+            </p>
+          )}
         </div>
         <div className="form-group">
           <label className="form-label">Date of birth</label>
@@ -471,6 +488,38 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit }
     </div>
   )
 
+  if (view === 'reactivate-confirm') return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-handle" />
+        <div style={{ textAlign:'center', padding:'12px 4px 20px' }}>
+          <div style={{
+            width:52, height:52, borderRadius:'50%',
+            background:'var(--accent-light)',
+            display:'flex', alignItems:'center', justifyContent:'center',
+            margin:'0 auto 18px', color:'var(--accent)',
+          }}>
+            <PlayIcon />
+          </div>
+          <p className="modal-title" style={{ marginBottom:10 }}>Reactivate {client.name}?</p>
+          <p style={{ fontSize:14, color:'var(--text-2)', lineHeight:1.65, marginBottom:8 }}>
+            Their <strong>start date will be reset to today</strong><br/>({formatDMY(new Date())}).
+          </p>
+          <p style={{ fontSize:13, color:'var(--text-3)', lineHeight:1.6 }}>
+            Weekly and cycle attendance counts will recalculate from this date.
+            {client.startDate && <> The previous start date ({client.startDate}) will be saved for reference.</>}
+          </p>
+        </div>
+        <div style={{ display:'flex', gap:10, marginTop:4 }}>
+          <button className="btn btn-outline btn-full" onClick={() => setView('menu')}>Go back</button>
+          <button className="btn btn-primary btn-full" onClick={() => onStatusChange(client.id, 'active')}>
+            Confirm & reactivate
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+
   const s = client.status
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -498,7 +547,7 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit }
             </button>
           )}
           {s === 'paused' && (
-            <button className="btn btn-outline btn-full" onClick={() => onStatusChange(client.id, 'active')}
+            <button className="btn btn-outline btn-full" onClick={() => setView('reactivate-confirm')}
               style={{ color:'var(--teal)', borderColor:'#9FE1CB' }}>
               <PlayIcon /> Reactivate
             </button>
@@ -510,7 +559,7 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit }
             </button>
           )}
           {s === 'deactivated' && (
-            <button className="btn btn-outline btn-full" onClick={() => onStatusChange(client.id, 'active')}
+            <button className="btn btn-outline btn-full" onClick={() => setView('reactivate-confirm')}
               style={{ color:'var(--teal)', borderColor:'#9FE1CB' }}>
               <PlayIcon /> Reactivate
             </button>
