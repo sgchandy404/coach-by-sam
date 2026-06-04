@@ -32,8 +32,20 @@ export default function ClientsPage({ clientId, setClientId, setTab }) {
   }
 
   const handleStatusChange = async (id, newStatus) => {
-    await updateClient(id, { status: newStatus })
-    setClients(cs => cs.map(x => x.id === id ? { ...x, status: newStatus } : x))
+    const updates = { status: newStatus }
+
+    if (newStatus === 'active') {
+      const client = clients.find(c => c.id === id)
+      const newStart = nextMondayDMY()
+      // Preserve the very first startDate as originalStartDate (only if not already saved)
+      if (client?.startDate && !client?.originalStartDate) {
+        updates.originalStartDate = client.startDate
+      }
+      updates.startDate = newStart
+    }
+
+    await updateClient(id, updates)
+    setClients(cs => cs.map(x => x.id === id ? { ...x, ...updates } : x))
     setManaging(null)
   }
 
@@ -401,6 +413,11 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit }
           <label className="form-label">Start date</label>
           <input className="form-input" type="date" value={toHTMLDate(startDate)}
             onChange={e => setStartDate(fromHTMLDate(e.target.value))} />
+          {client.originalStartDate && (
+            <p style={{ fontSize:11, color:'var(--text-3)', marginTop:5 }}>
+              Originally joined: <strong>{client.originalStartDate}</strong> — updated on resume
+            </p>
+          )}
         </div>
         <div className="form-group">
           <label className="form-label">Date of birth</label>
