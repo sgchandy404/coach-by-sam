@@ -36,7 +36,7 @@ export default function ClientsPage({ clientId, setClientId, setTab }) {
 
     if (newStatus === 'active') {
       const client = clients.find(c => c.id === id)
-      const newStart = nextMondayDMY()
+      const newStart = formatDMY(new Date())
       // Preserve the very first startDate as originalStartDate (only if not already saved)
       if (client?.startDate && !client?.originalStartDate) {
         updates.originalStartDate = client.startDate
@@ -515,7 +515,7 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit }
             </button>
           )}
           {s === 'paused' && (
-            <button className="btn btn-outline btn-full" onClick={() => onStatusChange(client.id, 'active')}
+            <button className="btn btn-outline btn-full" onClick={() => setView('reactivate-confirm')}
               style={{ color:'var(--teal)', borderColor:'#9FE1CB' }}>
               <PlayIcon /> Reactivate
             </button>
@@ -527,7 +527,7 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit }
             </button>
           )}
           {s === 'deactivated' && (
-            <button className="btn btn-outline btn-full" onClick={() => onStatusChange(client.id, 'active')}
+            <button className="btn btn-outline btn-full" onClick={() => setView('reactivate-confirm')}
               style={{ color:'var(--teal)', borderColor:'#9FE1CB' }}>
               <PlayIcon /> Reactivate
             </button>
@@ -541,6 +541,34 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit }
         </div>
         <button className="btn btn-ghost btn-full" onClick={onClose} style={{ marginTop:12 }}>Cancel</button>
       </div>
+    )}
+
+    {view === 'reactivate-confirm' && (
+      <div>
+        <div className="modal-handle" />
+        <div style={{ textAlign:'center', padding:'8px 0 20px' }}>
+          <div style={{ width:48, height:48, borderRadius:'50%', background:'var(--accent-light)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px', color:'var(--accent)' }}>
+            <PlayIcon />
+          </div>
+          <p className="modal-title" style={{ marginBottom:10 }}>Reactivate {client.name}?</p>
+          <p style={{ fontSize:14, color:'var(--text-2)', lineHeight:1.65, marginBottom:6 }}>
+            Their <strong>start date will be reset to today</strong> ({formatDMY(new Date())}).
+          </p>
+          <p style={{ fontSize:13, color:'var(--text-3)', lineHeight:1.6 }}>
+            Weekly and cycle attendance counts will recalculate from this date.
+            {client.startDate && (
+              <> The previous start date ({client.startDate}) will be saved for reference.</>
+            )}
+          </p>
+        </div>
+        <div style={{ display:'flex', gap:10, marginTop:8 }}>
+          <button className="btn btn-outline btn-full" onClick={() => setView('menu')}>Go back</button>
+          <button className="btn btn-primary btn-full" onClick={() => onStatusChange(client.id, 'active')}>
+            Confirm & reactivate
+          </button>
+        </div>
+      </div>
+    )}
     </div>
   )
 }
