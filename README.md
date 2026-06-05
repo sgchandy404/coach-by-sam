@@ -1,10 +1,30 @@
 # Coach by Sam
 
-A mobile-first Progressive Web App for a personal fitness coach to manage clients, track progress, and evaluate performance — all from a phone.
-
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-5-646CFF?logo=vite&logoColor=white)
 ![Firebase](https://img.shields.io/badge/Firebase-Firestore%20%2B%20Auth-FFCA28?logo=firebase&logoColor=black)
+![PWA](https://img.shields.io/badge/PWA-Mobile--first-5A0FC8?logo=pwa&logoColor=white)
+
+🔗 **Live:** https://coach-by-sam.web.app
+
+---
+
+## Project Overview
+
+Coach by Sam is a mobile-first Progressive Web App built for a personal fitness coach to replace spreadsheet-based client tracking. It manages the full client lifecycle — from onboarding and session attendance through to performance evaluation and progress reporting — in a single installable app designed to be used on a phone between classes. The app is intentionally scoped to one coach: all data is locked to a single authenticated Google account, keeping the architecture simple and the experience focused. Rather than being a generic SaaS platform, it solves a very specific problem: giving an independent coach a professional, fast tool that works the way she actually works.
+
+---
+
+## Screenshots
+
+**Client list**
+![Client list](./docs/screenshots/clients.png)
+
+**Rankings — client evaluation detail**
+![Rankings](./docs/screenshots/rankings.png)
+
+**Attendance calendar**
+![Attendance](./docs/screenshots/attendance.png)
 
 ---
 
@@ -12,14 +32,73 @@ A mobile-first Progressive Web App for a personal fitness coach to manage client
 
 | Module | What it does |
 |--------|-------------|
-| **Clients** | Active / paused / deactivated lifecycle, smart reactivation with start-date reset, payment status |
+| **Clients** | Active / paused / deactivated lifecycle, smart reactivation with start-date reset, original join date preserved |
 | **PR Log** | Personal records per exercise (weight, time, reps), custom exercise support, weekly/monthly cadence |
 | **Attributes** | Fitness qualities (mobility, stamina, flexibility, etc.) scored 1–10 per session |
 | **Measurements** | Body measurements over time with delta indicators between sessions |
-| **Attendance** | Global calendar view, per-day class toggling, 28-day billing cycles anchored to each client's start date |
-| **Rankings** | Automated evaluation across Performance, Physical, Fitness, and Attendance dimensions with coach/client label modes |
+| **Attendance** | Global calendar view, per-day class toggling across all clients, 28-day billing cycles anchored to each client's start date |
+| **Rankings** | Automated evaluation across four dimensions with separate coach/client label modes and a shareable progress card |
 | **Progress Report** | Radar chart, PR trend lines, weight trend — accessible from each client's manage modal |
-| **Settings** | Seed 10 dummy clients, flush dummy data, flush all data |
+| **Settings** | Seed 10 dummy clients for demo, flush dummy data, flush all data |
+
+---
+
+## Architecture & Design Decisions
+
+### Evaluation engine — pure functions, decoupled from Firebase
+
+The evaluation engine lives entirely in `src/lib/evaluate.js` and has zero Firebase imports. It takes plain data arrays as input and returns status objects — making it independently testable without mocking any database calls.
+
+Clients are evaluated across four dimensions:
+
+| Dimension | Data source | Cadence | Logic |
+|-----------|-------------|---------|-------|
+| **Performance** | PR log | Weekly | New PR in window → improving; no PR for N days → declining |
+| **Physical** | Measurements | Monthly | % change vs previous 30-day window; direction depends on goal type |
+| **Fitness** | Attributes | Monthly | Score point change vs previous 30-day window |
+| **Attendance** | Attendance records | Monthly | Attended / expected based on membership type (3×, 4×, or 5× per week) |
+
+Status values: `improving` · `stagnant` · `declining` · `needs_attention` · `insufficient`
+
+Each client has per-client thresholds (measurement % change, attribute point delta, PR stale days) configurable from their manage modal — so the coach can set stricter or looser bars per individual.
+
+Goal-type awareness is built in: for a `recomposition` goal, Physical improvement requires waist measurement decreasing *and* arm or thigh measurement increasing. Only one direction counts as stagnant; neither counts as declining.
+
+The coach and client see different labels for the same status — e.g. `declining` shows as "Declining" to Sam but "Let's refocus here" to the client — keeping the language appropriate for each audience without duplicating any logic.
+
+---
+
+### Client lifecycle — state machine with intentional reactivation
+
+Clients move through three states:
+
+```
+active ──► paused ──► active
+  │                     ▲
+  └──► deactivated ─────┘
+```
+
+- **Pausing** preserves all data and keeps the client in the ClientPicker; intended for planned breaks
+- **Deactivating** also preserves all data but signals a longer-term or administrative hold
+- **Reactivating** from either state triggers a confirmation screen explaining that the start date will be reset to today
+
+The reactivation flow was designed deliberately: rather than silently resetting the date or forcing the coach to remember to update it manually, the app surfaces a confirmation modal with the exact new date before committing. The original join date is saved as `originalStartDate` and shown in the edit profile view — written once, never overwritten on subsequent pauses.
+
+---
+
+### Attendance cycles — anchored to client start date, not calendar month
+
+Attendance expected counts and billing cycles are calculated on **28-day rolling windows anchored to each client's individual start date**, not calendar months.
+
+The problem with calendar months: a client who joins on the 20th and attends every class will show up as dramatically under-attended for most of that first month because the expected count is calculated against the full month. This makes the coach's dashboard misleading and the client's progress report discouraging.
+
+With start-date anchoring, month 1 starts on day 1 for every client regardless of when in the calendar year they joined. Expected classes per cycle = `membershipType × 4`. The `getMonthWindow()` utility in `src/lib/utils.js` handles the arithmetic — given a client's start date and any target date, it returns the exact start and end of the 28-day cycle containing that date.
+
+---
+
+### Attendance model — per-day toggling, real-time, no save button
+
+The attendance calendar shows all active and paused clients for any given day. Tapping a client row toggles their attendance — writing or deleting a Firestore document immediately with no intermediate save step. Each document's ID is the date string itself (`DD-MM-YYYY`), making lookups trivial and avoiding duplicates structurally rather than through validation logic.
 
 ---
 
@@ -28,11 +107,11 @@ A mobile-first Progressive Web App for a personal fitness coach to manage client
 | Layer | Choice |
 |-------|--------|
 | Frontend | React 18 + Vite — no TypeScript, no UI framework |
-| Styling | Plain CSS with custom design tokens |
+| Styling | Plain CSS with custom design tokens — no Tailwind |
 | Charts | Recharts (radar, line charts) |
-| Auth | Firebase Authentication — Google Sign-In, single authorised user |
+| Auth | Firebase Authentication — Google Sign-In |
 | Database | Firebase Firestore — subcollection structure per client |
-| Hosting | Firebase Hosting |
+| Hosting | Firebase Hosting (free tier) |
 | Dates | date-fns |
 
 ---
@@ -60,7 +139,7 @@ npm install
 cp .env.example .env.local
 ```
 
-Open `.env.local` and fill in your Firebase project values:
+Fill in your Firebase values in `.env.local`:
 
 ```env
 VITE_FIREBASE_API_KEY=...
@@ -72,9 +151,9 @@ VITE_FIREBASE_APP_ID=...
 VITE_FIREBASE_MEASUREMENT_ID=...
 ```
 
-### 4. Set Firestore security rules
+### 4. Lock Firestore to your account
 
-In the Firebase console → Firestore → **Rules**, restrict access to your Google account UID only:
+In Firebase Console → Firestore → **Rules**:
 
 ```
 rules_version = '2';
@@ -88,7 +167,7 @@ service cloud.firestore {
 }
 ```
 
-To find your UID: sign in to the app once, then check Firebase Console → Authentication → Users.
+Find your UID: sign in once → Firebase Console → Authentication → Users.
 
 ### 5. Run locally
 
@@ -102,7 +181,7 @@ npm run dev
 ```bash
 npm install -g firebase-tools
 firebase login
-firebase init hosting   # point to dist/, single-page app: yes
+firebase init hosting   # dist/, single-page app: yes
 npm run build
 firebase deploy
 ```
@@ -114,59 +193,46 @@ firebase deploy
 ```
 src/
 ├── components/
-│   ├── BottomNav.jsx        # Fixed tab bar (6 tabs)
+│   ├── BottomNav.jsx        # Fixed tab bar
 │   ├── ClientPicker.jsx     # Shared client selector
-│   ├── PageLoader.jsx       # Full-screen branded loader + BrandMark
+│   ├── PageLoader.jsx       # Full-screen branded loader
 │   └── ProgressReport.jsx   # Reusable report (radar, trends, stats)
 ├── data/
 │   ├── exercises.js         # Built-in exercise library, attributes, measurements
-│   └── seed.js              # 10 dummy clients with full data
+│   └── seed.js              # 10 dummy clients with realistic data
 ├── lib/
-│   ├── evaluate.js          # Pure evaluation engine (no Firebase dependency)
+│   ├── evaluate.js          # Pure evaluation engine — no Firebase dependency
 │   ├── firebase.js          # Firebase init — reads from env vars
-│   ├── firestore.js         # All Firestore helpers + seed/flush
-│   └── utils.js             # Formatting, avatar colours, date helpers
+│   ├── firestore.js         # All Firestore read/write helpers
+│   └── utils.js             # Date helpers, avatar colours, getMonthWindow
 ├── pages/
-│   ├── AttendancePage.jsx   # Calendar + day-sheet attendance logging
-│   ├── AttributesPage.jsx   # Attribute scoring
-│   ├── ClientsPage.jsx      # Client list + manage modal
-│   ├── MeasurementsPage.jsx # Body measurements
-│   ├── PRLogPage.jsx        # Personal records
-│   ├── RankingsPage.jsx     # Rankings overview + client detail + share card
-│   └── SettingsPage.jsx     # Seed / flush controls
+│   ├── AttendancePage.jsx
+│   ├── AttributesPage.jsx
+│   ├── ClientsPage.jsx      # Client list + full manage modal
+│   ├── MeasurementsPage.jsx
+│   ├── PRLogPage.jsx
+│   ├── RankingsPage.jsx     # Evaluation overview + client detail + share card
+│   └── SettingsPage.jsx
 ├── App.jsx                  # Auth gate, tab state, iOS sign-in handling
 ├── index.css                # Global styles and CSS design tokens
-└── main.jsx                 # React entry point
+└── main.jsx
 ```
 
 ---
 
-## Evaluation engine
+## Known limitations & deliberate scope
 
-`src/lib/evaluate.js` is a pure module (no Firebase, fully testable) that scores each client across four dimensions:
-
-| Dimension | Source | Cadence |
-|-----------|--------|---------|
-| Performance | PRs | Weekly — new PR = improving, no PR in N days = declining |
-| Physical | Measurements | Monthly — % change vs previous 30-day window |
-| Fitness | Attributes | Monthly — score point change vs previous 30-day window |
-| Attendance | Attendance records | Monthly — attended / expected based on membership type |
-
-Status values: `improving` · `stagnant` · `declining` · `needs_attention` · `insufficient`
-
-Per-client thresholds (measurement %, attribute pts, PR stale days) are configurable from each client's manage modal.
-
----
-
-## Attendance cycles
-
-Attendance is tracked on **28-day rolling cycles anchored to each client's start date** — not calendar months. When a client is reactivated after a pause, their start date resets to the resumption date (with the original preserved as `originalStartDate` for reference).
+- **Single-coach only** — Firestore rules are locked to one Google UID by design. Multi-tenancy would require a full auth model redesign.
+- **No payment processing** — payment status (paid/unpaid) is tracked as a manual flag only. No Stripe, no invoicing.
+- **No offline support** — the app requires a network connection. Firestore's offline cache provides some resilience but it's not a deliberate offline-first design.
+- **Evaluation windows are always relative to today** — there are no historical snapshots; re-evaluating past periods would require a different data model.
+- **Mobile-first, not desktop-optimised** — the layout is capped at 480px and designed for one-handed phone use.
 
 ---
 
 ## Add to home screen
 
-Deploy the app, then in Chrome on Android/iOS: tap the menu → **Add to Home Screen**. Runs as a standalone app with no browser chrome.
+Open the deployed URL in Chrome on Android or Safari on iOS → tap the menu → **Add to Home Screen**. Runs as a standalone app with no browser chrome.
 
 ---
 
@@ -178,4 +244,4 @@ staging  ← pre-production
 prod     ← production
 ```
 
-Feature branches follow the pattern `feat/<name>`, cut from `dev` and merged back via no-FF merge.
+Feature branches: `feat/<name>`, cut from `dev`, merged back via `--no-ff`.
