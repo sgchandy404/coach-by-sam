@@ -10,11 +10,6 @@ dist/
 .env.development
 .env.production
 .env.*.local
-.env
-.env.local
-.env.development
-.env.production
-.env.*.local
 
 # Firebase
 .firebase/
