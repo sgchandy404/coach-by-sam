@@ -245,3 +245,44 @@ prod     ← production
 ```
 
 Feature branches: `feat/<name>`, cut from `dev`, merged back via `--no-ff`.
+
+## Development Setup
+
+### Dev / Prod separation
+
+The app uses two Firebase projects to keep development completely separate from Sam's live data.
+
+| Environment | Command | Firebase project | Database |
+|-------------|---------|-----------------|----------|
+| Development | `npm run dev` | `coach-by-sam-dev` | Dev database — safe to seed, flush, break |
+| Production | `npm run build && firebase deploy` | `coach-by-sam` | Sam's live data |
+
+Vite automatically loads `.env.development` when running locally and `.env.production` when building for deployment.
+
+### Environment variables
+
+Copy `.env.example` and fill in your Firebase project values:
+
+Create two files — `.env.development` with dev project values and `.env.production` with production values. Both are gitignored and never committed.
+
+### Syncing prod data to dev
+
+When you need to test against real data:
+
+1. **Export from production** — Firebase Console → production project → Firestore → Import/Export → Export → bucket: `coach-by-sam-prod`
+2. **Import into dev** — Firebase Console → dev project → Firestore → Import/Export → Import → paste the path to the `.overall_export_metadata` file (without `gs://` prefix)
+
+Cross-project bucket permissions are already configured — this takes under 5 minutes.
+
+### Backups
+
+Production Firestore runs **weekly automated backups** with 28-day retention (4 snapshots at any point). Managed via Firebase Console → production project → Firestore → Backups.
+
+Before any major change, also do a manual export to `coach-by-sam-prod` as an extra safety net.
+
+### Before meeting Sam / testing new features
+
+1. Run `npm run dev` — confirms you're on the dev database
+2. Check browser console shows `coach-by-sam-dev` as the project
+3. Make and test all changes locally
+4. When satisfied → `npm run build && firebase deploy` to push to production
