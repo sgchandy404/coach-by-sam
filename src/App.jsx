@@ -7,6 +7,7 @@ import AttributesPage   from './pages/AttributesPage.jsx'
 import MeasurementsPage from './pages/MeasurementsPage.jsx'
 import RankingsPage     from './pages/RankingsPage.jsx'
 import AttendancePage   from './pages/AttendancePage.jsx'
+import RevenuePage      from './pages/RevenuePage.jsx'
 import SettingsPage     from './pages/SettingsPage.jsx'
 import BottomNav        from './components/BottomNav.jsx'
 import { BrandMark }   from './components/PageLoader.jsx'
@@ -48,6 +49,7 @@ export default function App() {
         {tab === 'measurements' && <MeasurementsPage {...clientProps} />}
         {tab === 'rankings'     && <RankingsPage />}
         {tab === 'attendance'   && <AttendancePage />}
+        {tab === 'revenue'      && <RevenuePage />}
       </div>
       <BottomNav tab={tab} setTab={setTab} onSettings={() => setShowSettings(true)} />
       {showSettings && <SettingsPage onDone={() => setShowSettings(false)} />}
