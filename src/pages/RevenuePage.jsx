@@ -30,7 +30,7 @@ export default function RevenuePage() {
       const win = getMonthWindow(c.startDate, todayStr)
       if (win) return c.lastPaidCycleStart === formatDMY(win.windowStart)
     }
-    return c.paymentStatus === 'paid'
+    return false
   }
 
   const now      = new Date()
