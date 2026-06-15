@@ -97,7 +97,7 @@ export const evaluatePerformance = (prs, thresholds, goalType) => {
     if (current.length === 0 && sorted.length < 2) {
       status = STATUS.INSUFFICIENT
     } else if (!hasRecent) {
-      status = STATUS.DECLINING
+      status = STATUS.NEEDS_ATTN   // stale but not enough comparison data to call it declining
     } else if (current.length > 0 && previous.length > 0) {
       const bestCurrent  = isCardio ? Math.min(...current.map(e => e.value))  : Math.max(...current.map(e => e.value))
       const bestPrevious = isCardio ? Math.min(...previous.map(e => e.value)) : Math.max(...previous.map(e => e.value))
@@ -106,7 +106,7 @@ export const evaluatePerformance = (prs, thresholds, goalType) => {
       const declined = isCardio ? change > 3  : change < -3
       status = improved ? STATUS.IMPROVING : declined ? STATUS.DECLINING : STATUS.STAGNANT
     } else {
-      status = hasRecent ? STATUS.STAGNANT : STATUS.DECLINING
+      status = hasRecent ? STATUS.STAGNANT : STATUS.NEEDS_ATTN
     }
 
     return { name, status, daysSince: Math.round(daysSince), latestValue: latest.value, unit: latest.unit, type: latest.type }

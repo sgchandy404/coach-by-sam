@@ -13,6 +13,47 @@ const statusPill = {
   deactivated: { label:'Deactivated', bg:'#FAEAE4', color:'#6B2410', border:'#E8A88A' },
 }
 
+// Returns { progress: 0–1, daysLeft: number|null } for a client's current cycle
+const getCycleInfo = (c) => {
+  if (!c.startDate) return { progress: 0, daysLeft: null }
+  const todayStr = formatDMY(new Date())
+  const win = getMonthWindow(c.startDate, todayStr)
+  if (!win) return { progress: 0, daysLeft: null }
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const elapsed  = Math.floor((today - win.windowStart) / 86400000)
+  const daysLeft = Math.floor((win.windowEnd  - today)  / 86400000)
+  return { progress: Math.min(1, elapsed / 27), daysLeft }
+}
+
+function AvatarArc({ name, size = 52, paid, progress, daysLeft }) {
+  const pad = 6
+  const svgSize = size + pad * 2
+  const cx = svgSize / 2
+  const r  = size / 2 + 2
+  const circ = 2 * Math.PI * r
+  const urgent = !paid && daysLeft !== null && daysLeft <= 3
+  const arcColor = paid ? 'var(--teal)' : urgent ? 'var(--coral)' : 'var(--amber)'
+  return (
+    <div style={{ position:'relative', width:size, height:size, flexShrink:0 }}>
+      <div style={{
+        width:size, height:size, borderRadius:'50%',
+        background:avatarColor(name),
+        display:'flex', alignItems:'center', justifyContent:'center',
+        fontSize:size * 0.3, fontWeight:700, color:'white',
+        fontFamily:'DM Sans, sans-serif',
+      }}>{getInitials(name)}</div>
+      <svg width={svgSize} height={svgSize}
+        style={{ position:'absolute', top:-pad, left:-pad, transform:'rotate(-90deg)', pointerEvents:'none' }}>
+        <circle cx={cx} cy={cx} r={r} fill="none" stroke="var(--border)" strokeWidth={2.5} />
+        <circle cx={cx} cy={cx} r={r} fill="none"
+          stroke={arcColor} strokeWidth={2.5}
+          strokeDasharray={`${circ * progress} ${circ}`}
+          strokeLinecap="round" />
+      </svg>
+    </div>
+  )
+}
+
 export default function ClientsPage({ clientId, setClientId, setTab }) {
   const [clients, setClients]       = useState([])
   const [tab, setLocalTab]          = useState('active')
@@ -181,9 +222,19 @@ export default function ClientsPage({ clientId, setClientId, setTab }) {
           </div>
         ) : (
           <div>
-            {visible.map(c => {
+            {[...visible].sort((a, b) => {
+              const score = (c) => {
+                const paid = isClientPaid(c)
+                if (paid) return 2
+                const { daysLeft } = getCycleInfo(c)
+                return daysLeft !== null && daysLeft <= 3 ? 0 : 1
+              }
+              return score(a) - score(b)
+            }).map(c => {
               const paid = isClientPaid(c)
               const pill = statusPill[c.status]
+              const { progress, daysLeft } = getCycleInfo(c)
+              const urgent = !paid && daysLeft !== null && daysLeft <= 3
               return (
                 <div
                   key={c.id}
@@ -191,29 +242,22 @@ export default function ClientsPage({ clientId, setClientId, setTab }) {
                   style={{
                     background: clientId === c.id ? 'var(--accent-light)' : 'var(--surface)',
                     borderRadius: 16,
-                    border: '1px solid var(--border)',
+                    border: urgent ? '1px solid var(--coral)' : '1px solid var(--border)',
                     marginBottom: 10,
                     overflow: 'hidden',
-                    boxShadow: 'var(--shadow-sm)',
+                    boxShadow: urgent ? '0 2px 12px rgba(220,80,60,0.10)' : 'var(--shadow-sm)',
                     display: 'flex',
                     cursor: 'pointer',
                     transition: 'transform 0.15s, box-shadow 0.15s',
                   }}
                 >
                   {/* Left accent bar */}
-                  <div style={{ width: 4, background: avatarColor(c.name), flexShrink: 0 }} />
+                  <div style={{ width: 4, background: urgent ? 'var(--coral)' : avatarColor(c.name), flexShrink: 0 }} />
 
                   {/* Card content */}
                   <div style={{ flex: 1, padding: '14px 14px 14px 16px', display: 'flex', alignItems: 'center', gap: 14 }}>
-                    {/* Avatar with halo */}
-                    <div style={{
-                      width: 52, height: 52, borderRadius: '50%',
-                      background: avatarColor(c.name),
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 16, fontWeight: 700, color: 'white', flexShrink: 0,
-                      boxShadow: `0 0 0 3px ${avatarColor(c.name)}33`,
-                      fontFamily: 'DM Sans, sans-serif',
-                    }}>{getInitials(c.name)}</div>
+                    {/* Avatar with cycle arc */}
+                    <AvatarArc name={c.name} paid={paid} progress={progress} daysLeft={daysLeft} />
 
                     {/* Name + goal */}
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -237,17 +281,24 @@ export default function ClientsPage({ clientId, setClientId, setTab }) {
                       <button onClick={e => handlePaymentTap(e, c)} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
                         <div style={{
                           width: 8, height: 8, borderRadius: '50%',
-                          background: paid ? 'var(--teal)' : 'var(--amber)',
+                          background: paid ? 'var(--teal)' : urgent ? 'var(--coral)' : 'var(--amber)',
                           animation: paid ? 'none' : 'unpaid-pulse 1.8s ease-in-out infinite',
                         }} />
-                        <span style={{ fontSize: 12, fontWeight: 600, color: paid ? 'var(--teal)' : 'var(--amber)' }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: paid ? 'var(--teal)' : urgent ? 'var(--coral)' : 'var(--amber)' }}>
                           {paid ? 'Paid' : 'Unpaid'}
                         </span>
                       </button>
-                      <button className="btn btn-ghost btn-icon" onClick={e => { e.stopPropagation(); setManaging(c) }}
-                        style={{ color: 'var(--text-3)', padding: 4 }}>
-                        <DotsIcon />
-                      </button>
+                      <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                        {urgent && (
+                          <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--coral)', background: '#FAEAE4', borderRadius: 100, padding: '2px 7px', border: '1px solid #F0997B' }}>
+                            Due in {daysLeft}d
+                          </span>
+                        )}
+                        <button className="btn btn-ghost btn-icon" onClick={e => { e.stopPropagation(); setManaging(c) }}
+                          style={{ color: 'var(--text-3)', padding: 4 }}>
+                          <DotsIcon />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
