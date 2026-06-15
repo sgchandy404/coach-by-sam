@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getClients, getAllClientsPayments } from '../lib/firestore.js'
-import { getInitials, avatarColor } from '../lib/utils.js'
+import { getInitials, avatarColor, formatDMY, getMonthWindow } from '../lib/utils.js'
 import PageLoader from '../components/PageLoader.jsx'
 
 export default function RevenuePage() {
@@ -23,6 +23,15 @@ export default function RevenuePage() {
     }
     load()
   }, [])
+
+  const isClientPaid = (c) => {
+    if (c.lastPaidCycleStart && c.startDate) {
+      const todayStr = formatDMY(new Date())
+      const win = getMonthWindow(c.startDate, todayStr)
+      if (win) return c.lastPaidCycleStart === formatDMY(win.windowStart)
+    }
+    return c.paymentStatus === 'paid'
+  }
 
   const now      = new Date()
   const year     = viewDate.getFullYear()
@@ -115,7 +124,7 @@ export default function RevenuePage() {
               const payments       = paymentsByClient[c.id] || []
               const thisMonthPays  = payments.filter(p => p.date && p.date.slice(3) === monthStr)
               const clientCollected = thisMonthPays.reduce((s, p) => s + (p.amount || 0), 0)
-              const paid           = c.paymentStatus === 'paid'
+              const paid           = isClientPaid(c)
               const isExpanded     = expanded === c.id
               const recentPayments = payments.slice(0, 6)
 

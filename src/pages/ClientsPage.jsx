@@ -26,9 +26,21 @@ export default function ClientsPage({ clientId, setClientId, setTab }) {
   const load = () => getClients().then(c => { setClients(c); setLoading(false) })
   useEffect(() => { load() }, [])
 
+  // Derive paid status from the cycle the last payment covers, not just the flag.
+  // If lastPaidCycleStart is present, the client is paid only if it matches today's cycle.
+  // Falls back to paymentStatus for clients that pre-date this field.
+  const isClientPaid = (c) => {
+    if (c.lastPaidCycleStart && c.startDate) {
+      const todayStr = formatDMY(new Date())
+      const win = getMonthWindow(c.startDate, todayStr)
+      if (win) return c.lastPaidCycleStart === formatDMY(win.windowStart)
+    }
+    return c.paymentStatus === 'paid'
+  }
+
   const handlePaymentTap = async (e, c) => {
     e.stopPropagation()
-    if (c.paymentStatus !== 'paid') {
+    if (!isClientPaid(c)) {
       setPaymentModal({ client: c })
     } else {
       const payments = await getPayments(c.id)
@@ -44,19 +56,19 @@ export default function ClientsPage({ clientId, setClientId, setTab }) {
     const clientId = paymentModal.client.id
     const todayStr = formatDMY(new Date())
     await Promise.all([
-      updateClient(clientId, { paymentStatus: 'paid' }),
+      updateClient(clientId, { paymentStatus: 'paid', lastPaidCycleStart: cycleStart }),
       addPayment(clientId, { amount, date: todayStr, cycleStart, cycleEnd }),
     ])
-    setClients(cs => cs.map(x => x.id === clientId ? { ...x, paymentStatus: 'paid' } : x))
+    setClients(cs => cs.map(x => x.id === clientId ? { ...x, paymentStatus: 'paid', lastPaidCycleStart: cycleStart } : x))
     setPaymentModal(null)
   }
 
   const handleConfirmUnpaid = async (paymentId) => {
     const clientId = unpaidModal.client.id
-    const ops = [updateClient(clientId, { paymentStatus: 'unpaid' })]
+    const ops = [updateClient(clientId, { paymentStatus: 'unpaid', lastPaidCycleStart: null })]
     if (paymentId) ops.push(deletePayment(clientId, paymentId))
     await Promise.all(ops)
-    setClients(cs => cs.map(x => x.id === clientId ? { ...x, paymentStatus: 'unpaid' } : x))
+    setClients(cs => cs.map(x => x.id === clientId ? { ...x, paymentStatus: 'unpaid', lastPaidCycleStart: null } : x))
     setUnpaidModal(null)
   }
 
@@ -86,13 +98,13 @@ export default function ClientsPage({ clientId, setClientId, setTab }) {
     setManaging(null)
   }
 
-  const unpaidCount = clients.filter(c => c.paymentStatus !== 'paid' && c.status === 'active').length
+  const unpaidCount = clients.filter(c => !isClientPaid(c) && c.status === 'active').length
 
   const visible = clients.filter(c => {
     if (tab === 'active') return c.status === 'active'
     if (tab === 'paused') return c.status === 'paused' || c.status === 'deactivated'
     return true
-  }).filter(c => filter === 'unpaid' ? c.paymentStatus !== 'paid' : true)
+  }).filter(c => filter === 'unpaid' ? !isClientPaid(c) : true)
 
   return (
     <>
@@ -168,7 +180,7 @@ export default function ClientsPage({ clientId, setClientId, setTab }) {
         ) : (
           <div>
             {visible.map(c => {
-              const paid = c.paymentStatus === 'paid'
+              const paid = isClientPaid(c)
               const pill = statusPill[c.status]
               return (
                 <div
