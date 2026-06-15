@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { signOut } from 'firebase/auth'
 import { auth } from '../lib/firebase.js'
-import { getClients, addClient, updateClient, deleteClientFull, getPRs, getAttributes, getMeasurements, getAttendance, markAttended, unmarkAttended } from '../lib/firestore.js'
+import { getClients, addClient, updateClient, deleteClientFull, getPRs, getAttributes, getMeasurements, getAttendance, markAttended, unmarkAttended, addPayment, getPayments, deletePayment } from '../lib/firestore.js'
 import { getInitials, avatarColor, parseDMY, formatDMY, toHTMLDate, fromHTMLDate, nextMondayDMY, getMonthWindow } from '../lib/utils.js'
 import { GOAL_TYPES, DEFAULT_THRESHOLDS } from '../lib/evaluate.js'
 import ProgressReport from '../components/ProgressReport.jsx'
@@ -14,21 +14,64 @@ const statusPill = {
 }
 
 export default function ClientsPage({ clientId, setClientId, setTab }) {
-  const [clients, setClients]   = useState([])
-  const [tab, setLocalTab]      = useState('active')
-  const [filter, setFilter]     = useState('all')
-  const [showAdd, setShowAdd]   = useState(false)
-  const [managing, setManaging] = useState(null)
-  const [loading, setLoading]   = useState(true)
+  const [clients, setClients]       = useState([])
+  const [tab, setLocalTab]          = useState('active')
+  const [filter, setFilter]         = useState('all')
+  const [showAdd, setShowAdd]       = useState(false)
+  const [managing, setManaging]     = useState(null)
+  const [loading, setLoading]       = useState(true)
+  const [paymentModal, setPaymentModal] = useState(null) // { client }
+  const [unpaidModal, setUnpaidModal]   = useState(null) // { client, lastPayment, currentCycleStart }
 
   const load = () => getClients().then(c => { setClients(c); setLoading(false) })
   useEffect(() => { load() }, [])
 
-  const togglePayment = async (e, c) => {
+  // Derive paid status from the cycle the last payment covers, not just the flag.
+  // If lastPaidCycleStart is present, the client is paid only if it matches today's cycle.
+  // Falls back to paymentStatus for clients that pre-date this field.
+  const isClientPaid = (c) => {
+    if (c.lastPaidCycleStart && c.startDate) {
+      const todayStr = formatDMY(new Date())
+      const win = getMonthWindow(c.startDate, todayStr)
+      if (win) return c.lastPaidCycleStart === formatDMY(win.windowStart)
+    }
+    return false
+  }
+
+  const handlePaymentTap = async (e, c) => {
     e.stopPropagation()
-    const next = c.paymentStatus === 'paid' ? 'unpaid' : 'paid'
-    await updateClient(c.id, { paymentStatus: next })
-    setClients(cs => cs.map(x => x.id === c.id ? { ...x, paymentStatus: next } : x))
+    if (!isClientPaid(c)) {
+      setPaymentModal({ client: c })
+    } else {
+      const payments = await getPayments(c.id)
+      const lastPayment = payments[0] || null
+      const todayStr = formatDMY(new Date())
+      const cycleWindow = c.startDate ? getMonthWindow(c.startDate, todayStr) : null
+      const currentCycleStart = cycleWindow ? formatDMY(cycleWindow.windowStart) : null
+      setUnpaidModal({ client: c, lastPayment, currentCycleStart })
+    }
+  }
+
+  const handleConfirmPayment = async (amount, paymentDate, cycleStart, cycleEnd, isCurrentCycle) => {
+    const clientId = paymentModal.client.id
+    const ops = [addPayment(clientId, { amount, date: paymentDate, cycleStart, cycleEnd })]
+    if (isCurrentCycle) {
+      ops.push(updateClient(clientId, { paymentStatus: 'paid', lastPaidCycleStart: cycleStart }))
+    }
+    await Promise.all(ops)
+    if (isCurrentCycle) {
+      setClients(cs => cs.map(x => x.id === clientId ? { ...x, paymentStatus: 'paid', lastPaidCycleStart: cycleStart } : x))
+    }
+    setPaymentModal(null)
+  }
+
+  const handleConfirmUnpaid = async (paymentId) => {
+    const clientId = unpaidModal.client.id
+    const ops = [updateClient(clientId, { paymentStatus: 'unpaid', lastPaidCycleStart: null })]
+    if (paymentId) ops.push(deletePayment(clientId, paymentId))
+    await Promise.all(ops)
+    setClients(cs => cs.map(x => x.id === clientId ? { ...x, paymentStatus: 'unpaid', lastPaidCycleStart: null } : x))
+    setUnpaidModal(null)
   }
 
   const handleStatusChange = async (id, newStatus) => {
@@ -57,13 +100,13 @@ export default function ClientsPage({ clientId, setClientId, setTab }) {
     setManaging(null)
   }
 
-  const unpaidCount = clients.filter(c => c.paymentStatus !== 'paid' && c.status === 'active').length
+  const unpaidCount = clients.filter(c => !isClientPaid(c) && c.status === 'active').length
 
   const visible = clients.filter(c => {
     if (tab === 'active') return c.status === 'active'
     if (tab === 'paused') return c.status === 'paused' || c.status === 'deactivated'
     return true
-  }).filter(c => filter === 'unpaid' ? c.paymentStatus !== 'paid' : true)
+  }).filter(c => filter === 'unpaid' ? !isClientPaid(c) : true)
 
   return (
     <>
@@ -139,7 +182,7 @@ export default function ClientsPage({ clientId, setClientId, setTab }) {
         ) : (
           <div>
             {visible.map(c => {
-              const paid = c.paymentStatus === 'paid'
+              const paid = isClientPaid(c)
               const pill = statusPill[c.status]
               return (
                 <div
@@ -191,7 +234,7 @@ export default function ClientsPage({ clientId, setClientId, setTab }) {
 
                     {/* Payment + dots menu */}
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8, flexShrink: 0 }}>
-                      <button onClick={e => togglePayment(e, c)} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                      <button onClick={e => handlePaymentTap(e, c)} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
                         <div style={{
                           width: 8, height: 8, borderRadius: '50%',
                           background: paid ? 'var(--teal)' : 'var(--amber)',
@@ -225,6 +268,22 @@ export default function ClientsPage({ clientId, setClientId, setTab }) {
           onStatusChange={handleStatusChange} onDelete={handleDelete}
           onEdit={async (data) => { await updateClient(managing.id, data); await load(); setManaging(null) }} />
       )}
+      {paymentModal && (
+        <PaymentModal
+          client={paymentModal.client}
+          onConfirm={handleConfirmPayment}
+          onClose={() => setPaymentModal(null)}
+        />
+      )}
+      {unpaidModal && (
+        <UnpaidConfirmModal
+          client={unpaidModal.client}
+          lastPayment={unpaidModal.lastPayment}
+          currentCycleStart={unpaidModal.currentCycleStart}
+          onConfirm={handleConfirmUnpaid}
+          onClose={() => setUnpaidModal(null)}
+        />
+      )}
     </>
   )
 }
@@ -238,6 +297,7 @@ function AddClientModal({ onClose, onSave }) {
   const [notes, setNotes]             = useState('')
   const [membershipType, setMembership] = useState(3)
   const [startDate, setStartDate]     = useState(nextMondayDMY())
+  const [monthlyFee, setMonthlyFee]   = useState('')
   const [saving, setSaving]           = useState(false)
 
   return (
@@ -281,6 +341,11 @@ function AddClientModal({ onClose, onSave }) {
           <p style={{ fontSize:11, color:'var(--text-3)', marginTop:3 }}>Defaults to next Monday</p>
         </div>
         <div className="form-group">
+          <label className="form-label">Monthly fee (₹)</label>
+          <input className="form-input" type="number" min="0" placeholder="e.g. 3000"
+            value={monthlyFee} onChange={e => setMonthlyFee(e.target.value)} />
+        </div>
+        <div className="form-group">
           <label className="form-label">Date of birth</label>
           <input className="form-input" type="date" value={dob} onChange={e => setDob(e.target.value)} />
         </div>
@@ -293,7 +358,7 @@ function AddClientModal({ onClose, onSave }) {
           <button className="btn btn-primary btn-full" disabled={!name.trim() || saving}
             onClick={async () => {
               setSaving(true)
-              await onSave({ name: name.trim(), goal: goal.trim(), goalType, dob, notes: notes.trim(), membershipType, startDate, paymentStatus:'unpaid', status:'active' })
+              await onSave({ name: name.trim(), goal: goal.trim(), goalType, dob, notes: notes.trim(), membershipType, startDate, monthlyFee: monthlyFee ? Number(monthlyFee) : null, paymentStatus:'unpaid', status:'active' })
               setSaving(false)
             }}>
             {saving ? 'Saving…' : 'Add client'}
@@ -314,6 +379,7 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit }
   const [notes, setNotes]           = useState(client.notes || '')
   const [membershipType, setMembership] = useState(client.membershipType || 3)
   const [startDate, setStartDate]   = useState(client.startDate || nextMondayDMY())
+  const [monthlyFee, setMonthlyFee] = useState(client.monthlyFee ? String(client.monthlyFee) : '')
   const [thresholds, setThresholds] = useState(client.evaluationSettings || DEFAULT_THRESHOLDS)
   const [reportData, setReportData] = useState(null)
   const [attendanceRecords, setAttendanceRecords] = useState([])
@@ -420,6 +486,11 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit }
           )}
         </div>
         <div className="form-group">
+          <label className="form-label">Monthly fee (₹)</label>
+          <input className="form-input" type="number" min="0" placeholder="e.g. 3000"
+            value={monthlyFee} onChange={e => setMonthlyFee(e.target.value)} />
+        </div>
+        <div className="form-group">
           <label className="form-label">Date of birth</label>
           <input className="form-input" type="date" value={dob} onChange={e => setDob(e.target.value)} />
         </div>
@@ -432,7 +503,7 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit }
           <button className="btn btn-primary btn-full" disabled={!name.trim() || saving}
             onClick={async () => {
               setSaving(true)
-              await onEdit({ name: name.trim(), goal: goal.trim(), goalType, dob, notes: notes.trim(), membershipType, startDate })
+              await onEdit({ name: name.trim(), goal: goal.trim(), goalType, dob, notes: notes.trim(), membershipType, startDate, monthlyFee: monthlyFee ? Number(monthlyFee) : null })
               setSaving(false)
             }}>
             {saving ? 'Saving…' : 'Save changes'}
@@ -695,3 +766,121 @@ const ArchiveIcon = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="
 const TrashIcon   = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
 const BackIcon     = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
 const CalendarIcon = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+
+// ── Payment modal (unpaid → paid) ─────────────────────────────────────────────
+function PaymentModal({ client, onConfirm, onClose }) {
+  const [amount, setAmount]         = useState(client.monthlyFee ? String(client.monthlyFee) : '')
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10)) // YYYY-MM-DD
+  const [saving, setSaving]         = useState(false)
+
+  // Recompute cycle from selected date
+  const selectedDMY  = fromHTMLDate(paymentDate)   // DD-MM-YYYY
+  const win          = (client.startDate && selectedDMY) ? getMonthWindow(client.startDate, selectedDMY) : null
+  const cycleStart   = win ? formatDMY(win.windowStart) : null
+  const cycleEnd     = win ? formatDMY(win.windowEnd)   : null
+
+  // Is the selected date within the current (today's) cycle?
+  const todayStr     = formatDMY(new Date())
+  const currentWin   = client.startDate ? getMonthWindow(client.startDate, todayStr) : null
+  const currentCycleStart = currentWin ? formatDMY(currentWin.windowStart) : null
+  const isCurrentCycle = !!(cycleStart && cycleStart === currentCycleStart)
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-handle" />
+        <div style={{ textAlign:'center', padding:'8px 0 16px' }}>
+          <div style={{ width:48, height:48, borderRadius:'50%', background:'var(--accent-light)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 14px', color:'var(--accent)' }}>
+            <CoinIcon />
+          </div>
+          <p className="modal-title" style={{ marginBottom:4 }}>Record payment</p>
+          <p style={{ fontSize:13, color:'var(--text-2)' }}>{client.name}</p>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Payment date</label>
+          <input className="form-input" type="date" value={paymentDate}
+            max={new Date().toISOString().slice(0, 10)}
+            onChange={e => setPaymentDate(e.target.value)} />
+        </div>
+        {cycleStart && cycleEnd && (
+          <div style={{ background: isCurrentCycle ? 'var(--accent-light)' : '#FDF3DC', borderRadius:'var(--r-sm)', padding:'8px 12px', marginBottom:14, textAlign:'center' }}>
+            <p style={{ fontSize:12, fontWeight:600, color: isCurrentCycle ? 'var(--accent-text)' : '#854F0B' }}>
+              {isCurrentCycle ? 'Current cycle' : 'Past cycle — added to history only'}
+            </p>
+            <p style={{ fontSize:11, color: isCurrentCycle ? 'var(--accent-text)' : '#854F0B', marginTop:2 }}>
+              {cycleStart} → {cycleEnd}
+            </p>
+          </div>
+        )}
+        <div className="form-group">
+          <label className="form-label">Amount received (₹)</label>
+          <input className="form-input" type="number" min="0" placeholder="e.g. 3000"
+            value={amount} onChange={e => setAmount(e.target.value)} />
+        </div>
+        <div style={{ display:'flex', gap:10, marginTop:4 }}>
+          <button className="btn btn-outline btn-full" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary btn-full"
+            disabled={!amount || Number(amount) <= 0 || saving}
+            onClick={async () => {
+              setSaving(true)
+              await onConfirm(Number(amount), selectedDMY, cycleStart, cycleEnd, isCurrentCycle)
+              setSaving(false)
+            }}>
+            {saving ? 'Saving…' : isCurrentCycle ? 'Confirm payment' : 'Add to history'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Unpaid confirm modal (paid → unpaid) ──────────────────────────────────────
+function UnpaidConfirmModal({ client, lastPayment, currentCycleStart, onConfirm, onClose }) {
+  const [saving, setSaving] = useState(false)
+  const isDifferentCycle = lastPayment && currentCycleStart && lastPayment.cycleStart !== currentCycleStart
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-handle" />
+        <div style={{ textAlign:'center', padding:'8px 0 16px' }}>
+          <div style={{ width:48, height:48, borderRadius:'50%', background:'#FDF3DC', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 14px', color:'var(--amber)' }}>
+            <WarningIcon />
+          </div>
+          <p className="modal-title" style={{ marginBottom:4 }}>Mark as unpaid?</p>
+          <p style={{ fontSize:13, color:'var(--text-2)' }}>{client.name}</p>
+        </div>
+        {lastPayment ? (
+          <div style={{ background:'var(--bg)', borderRadius:'var(--r-sm)', padding:'12px 14px', marginBottom:16 }}>
+            <p style={{ fontSize:13, color:'var(--text-2)', lineHeight:1.6 }}>
+              This will delete the payment of <strong>₹{lastPayment.amount?.toLocaleString('en-IN')}</strong> recorded on <strong>{lastPayment.date}</strong>
+              {lastPayment.cycleStart && lastPayment.cycleEnd && (
+                <> (Cycle: {lastPayment.cycleStart} → {lastPayment.cycleEnd})</>
+              )}.
+            </p>
+            {isDifferentCycle && (
+              <p style={{ fontSize:12, color:'var(--amber)', marginTop:8, fontWeight:600 }}>
+                ⚠ This payment is from a different billing cycle. Deleting it will affect historical records.
+              </p>
+            )}
+          </div>
+        ) : (
+          <p style={{ fontSize:13, color:'var(--text-2)', textAlign:'center', marginBottom:16 }}>
+            No payment record found. Status will be reverted to unpaid.
+          </p>
+        )}
+        <div style={{ display:'flex', gap:10 }}>
+          <button className="btn btn-outline btn-full" onClick={onClose}>Keep paid</button>
+          <button className="btn btn-full" disabled={saving}
+            style={{ background:'var(--amber)', color:'#fff', border:'none', borderRadius:100, fontWeight:600, fontSize:15, padding:'12px 0', cursor:'pointer', opacity: saving ? 0.7 : 1 }}
+            onClick={async () => { setSaving(true); await onConfirm(lastPayment?.id || null); setSaving(false) }}>
+            {saving ? 'Removing…' : 'Mark unpaid'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const CoinIcon    = () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9"/><path d="M14.5 9.5a2.5 2.5 0 0 0-5 0c0 1.5 1 2 2.5 2.5S15 13 15 14.5a2.5 2.5 0 0 1-5 0"/><line x1="12" y1="7" x2="12" y2="8.5"/><line x1="12" y1="15.5" x2="12" y2="17"/></svg>
+const WarningIcon = () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>

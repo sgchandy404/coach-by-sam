@@ -17,7 +17,7 @@ export const updateClient = (id, data) =>
 
 // Full delete: removes client doc + all subcollection documents
 export const deleteClientFull = async (id) => {
-  const subcols = ['prs', 'attributes', 'measurements', 'attendance']
+  const subcols = ['prs', 'attributes', 'measurements', 'attendance', 'payments']
   const batch = writeBatch(db)
   for (const sub of subcols) {
     const snap = await getDocs(collection(db, 'clients', id, sub))
@@ -75,6 +75,21 @@ export const unmarkAttended = (clientId, date) =>
 export const updateAttendanceExercises = (clientId, date, exercises) =>
   updateDoc(doc(db, 'clients', clientId, 'attendance', date), { exercises })
 
+// ── Payments ──────────────────────────────────────────────────────────────────
+// One doc per payment event: { amount, date (DD-MM-YYYY), cycleStart, cycleEnd, createdAt }
+export const addPayment = (clientId, data) =>
+  addDoc(collection(db, 'clients', clientId, 'payments'), { ...data, createdAt: serverTimestamp() })
+
+export const getPayments = (clientId) =>
+  getDocs(query(collection(db, 'clients', clientId, 'payments'), orderBy('createdAt', 'desc')))
+    .then(s => s.docs.map(d => ({ id: d.id, ...d.data() })))
+
+export const deletePayment = (clientId, paymentId) =>
+  deleteDoc(doc(db, 'clients', clientId, 'payments', paymentId))
+
+export const getAllClientsPayments = (clientIds) =>
+  Promise.all(clientIds.map(id => getPayments(id).then(payments => ({ clientId: id, payments }))))
+
 // ── Custom exercises ──────────────────────────────────────────────────────────
 export const getCustomExercises = () =>
   getDocs(collection(db, 'customExercises'))
@@ -89,7 +104,7 @@ export const deleteCustomExercise = (id) =>
 // ── Seed / flush helpers ──────────────────────────────────────────────────────
 // Seed: write a batch of pre-built client docs + subcollection entries
 export const seedDummyData = async (clientsData) => {
-  for (const { client, prs, attributes, measurements, attendance = [] } of clientsData) {
+  for (const { client, prs, attributes, measurements, attendance = [], payments = [] } of clientsData) {
     const cRef = await addDoc(collection(db, 'clients'), { ...client, createdAt: serverTimestamp() })
     const batch = writeBatch(db)
     for (const pr of prs)
@@ -100,6 +115,8 @@ export const seedDummyData = async (clientsData) => {
       batch.set(doc(collection(db, 'clients', cRef.id, 'measurements')), { ...m, createdAt: serverTimestamp() })
     for (const att of attendance)
       batch.set(doc(db, 'clients', cRef.id, 'attendance', att.date), { ...att, createdAt: serverTimestamp() })
+    for (const p of payments)
+      batch.set(doc(collection(db, 'clients', cRef.id, 'payments')), { ...p, createdAt: serverTimestamp() })
     await batch.commit()
   }
 }
