@@ -268,7 +268,7 @@ export const evaluateFitness = (attributes, thresholds, goalType) => {
 
 // ── Attendance evaluation ─────────────────────────────────────────────────────
 
-export const evaluateAttendance = (attendanceRecords, membershipType, windowDays = 30) => {
+export const evaluateAttendance = (attendanceRecords, membershipType, startDate, windowDays = 30) => {
   if (!membershipType || !attendanceRecords?.length) return { status: STATUS.INSUFFICIENT, details: [] }
 
   const now    = new Date()
@@ -282,7 +282,11 @@ export const evaluateAttendance = (attendanceRecords, membershipType, windowDays
 
   if (inWindow.length < 1) return { status: STATUS.INSUFFICIENT, details: [] }
 
-  const expected = Math.round((windowDays / 7) * membershipType)
+  // Prorate expected to days actually elapsed — avoids penalising mid-cycle clients
+  const clientStart   = startDate ? parseDMY(startDate) : null
+  const effectiveStart = clientStart && clientStart > cutoff ? clientStart : cutoff
+  const elapsedDays   = Math.max(1, Math.floor((now - effectiveStart) / 86400000))
+  const expected = Math.max(1, Math.round((elapsedDays / 7) * membershipType))
   const attended = inWindow.length
   const rate     = attended / expected
   const status   = rate >= 0.85 ? STATUS.IMPROVING
@@ -301,7 +305,7 @@ export const evaluateClient = (client, prs, attributes, measurements, attendance
   const performance = evaluatePerformance(prs, thresholds, goalType)
   const physical    = evaluatePhysical(measurements, thresholds, goalType)
   const fitness     = evaluateFitness(attributes, thresholds, goalType)
-  const attendance  = evaluateAttendance(attendanceRecords, client.membershipType)
+  const attendance  = evaluateAttendance(attendanceRecords, client.membershipType, client.startDate)
 
   // Overall: worst of the four non-insufficient dimensions
   const priority = [STATUS.DECLINING, STATUS.NEEDS_ATTN, STATUS.STAGNANT, STATUS.IMPROVING]
