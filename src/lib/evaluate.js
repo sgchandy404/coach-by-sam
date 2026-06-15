@@ -280,7 +280,7 @@ export const evaluateAttendance = (attendanceRecords, membershipType, windowDays
     return d && d >= cutoff && d <= now
   })
 
-  if (inWindow.length < 2) return { status: STATUS.INSUFFICIENT, details: [] }
+  if (inWindow.length < 1) return { status: STATUS.INSUFFICIENT, details: [] }
 
   const expected = Math.round((windowDays / 7) * membershipType)
   const attended = inWindow.length
