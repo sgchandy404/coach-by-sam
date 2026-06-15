@@ -41,13 +41,14 @@ export default function RevenuePage() {
   const isCurrentMonth = year === now.getFullYear() && month === now.getMonth()
 
   const expected = clients.reduce((sum, c) => sum + (c.monthlyFee || 0), 0)
+  const missingFeeCount = clients.filter(c => !c.monthlyFee).length
   const collected = clients.reduce((sum, c) => {
     const payments = paymentsByClient[c.id] || []
     return sum + payments
-      .filter(p => p.date && p.date.slice(3) === monthStr)
+      .filter(p => p.cycleStart && p.cycleStart.slice(3) === monthStr)
       .reduce((s, p) => s + (p.amount || 0), 0)
   }, 0)
-  const outstanding = Math.max(0, expected - collected)
+  const outstanding = expected - collected   // negative = over-collected
   const rate = expected > 0 ? Math.min(100, Math.round((collected / expected) * 100)) : 0
 
   if (loading) return <PageLoader label="Loading revenue…" />
@@ -79,9 +80,9 @@ export default function RevenuePage() {
         <div style={{ background:'var(--surface)', borderRadius:16, border:'1px solid var(--border)', padding:'18px 20px', marginBottom:16 }}>
           <div style={{ display:'flex', gap:0 }}>
             {[
-              { label:'Expected',    value: expected,    color:'var(--text)' },
-              { label:'Collected',   value: collected,   color:'var(--teal)' },
-              { label:'Outstanding', value: outstanding, color: outstanding > 0 ? 'var(--amber)' : 'var(--teal)' },
+              { label:'Expected',    value: expected,              color:'var(--text)' },
+              { label:'Collected',   value: collected,             color:'var(--teal)' },
+              { label:'Outstanding', value: Math.max(0,outstanding), color: outstanding > 0 ? 'var(--amber)' : 'var(--teal)' },
             ].map((stat, i, arr) => (
               <div key={stat.label} style={{ flex:1, textAlign:'center', position:'relative' }}>
                 {i < arr.length - 1 && (
@@ -96,6 +97,13 @@ export default function RevenuePage() {
               </div>
             ))}
           </div>
+
+          {/* Missing fee warning */}
+          {missingFeeCount > 0 && (
+            <p style={{ fontSize:12, color:'var(--amber)', marginTop:12, textAlign:'center' }}>
+              {missingFeeCount} client{missingFeeCount > 1 ? 's' : ''} without a fee set — Expected may be incomplete
+            </p>
+          )}
 
           {/* Progress bar */}
           <div style={{ marginTop:16 }}>
