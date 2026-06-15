@@ -35,6 +35,22 @@ export const SAM_LABELS = {
   insufficient:      { text: 'Not enough data',   color: '#A8998A', bg: '#F5F0E8', border: '#DDD5C8' },
 }
 
+export const ATTENDANCE_SAM_LABELS = {
+  improving:       { text: 'On track',       color: '#3A5C2E', bg: '#EBF2E7', border: '#B5D4A8' },
+  stagnant:        { text: 'Falling behind', color: '#7A5200', bg: '#FDF3DC', border: '#E8C97A' },
+  declining:       { text: 'Low attendance', color: '#8B2E10', bg: '#FAEAE4', border: '#E8A88A' },
+  needs_attention: { text: 'Needs attention',color: '#5C3A1A', bg: '#F5EDE3', border: '#D4B898' },
+  insufficient:    { text: 'Not enough data',color: '#A8998A', bg: '#F5F0E8', border: '#DDD5C8' },
+}
+
+export const ATTENDANCE_CLIENT_LABELS = {
+  improving:       { text: 'On track',       color: '#3A5C2E', bg: '#EBF2E7', border: '#B5D4A8' },
+  stagnant:        { text: 'Falling behind', color: '#7A5200', bg: '#FDF3DC', border: '#E8C97A' },
+  declining:       { text: 'Low attendance', color: '#8B2E10', bg: '#FAEAE4', border: '#E8A88A' },
+  needs_attention: { text: 'Needs attention',color: '#5C3A1A', bg: '#F5EDE3', border: '#D4B898' },
+  insufficient:    { text: null,             color: '#A8998A', bg: '#F5F0E8', border: '#DDD5C8' },
+}
+
 export const CLIENT_LABELS = {
   improving:         { text: 'On track',           color: '#3A5C2E', bg: '#EBF2E7', border: '#B5D4A8' },
   stagnant:          { text: 'Maintaining',         color: '#7A5200', bg: '#FDF3DC', border: '#E8C97A' },
