@@ -28,7 +28,7 @@ export const avatarColor = (name) => {
 
 export const groupBy = (arr, key) =>
   arr.reduce((acc, item) => {
-    const k = item[key] || 'Other'
+    const k = (item[key] || 'Other').trim()
     acc[k] = acc[k] || []
     acc[k].push(item)
     return acc

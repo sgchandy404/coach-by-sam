@@ -211,7 +211,7 @@ function AddExerciseModal({ onClose, onSave }) {
           <button className="btn btn-primary btn-full" disabled={!name.trim() || saving}
             onClick={async () => {
               setSaving(true)
-              await onSave({ id: name.toLowerCase().replace(/\s+/g,'-'), name: name.trim(), category, type, unit: unitMap[type] })
+              await onSave({ id: name.toLowerCase().replace(/\s+/g,'-'), name: name.trim(), category: category.trim(), type, unit: unitMap[type] })
               setSaving(false)
             }}>
             {saving ? 'Saving…' : 'Add exercise'}
