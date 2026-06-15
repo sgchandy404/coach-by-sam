@@ -198,7 +198,8 @@ function DimensionCard({ title, icon, dim, labels, isSam }) {
             const lbl = labels[d.status] || labels.insufficient
             const delta = d.change != null ? `${d.change > 0 ? '+' : ''}${d.change}%`
                         : d.diff  != null ? `${d.diff  > 0 ? '+' : ''}${d.diff} pts`
-                        : d.daysSince != null ? `${d.daysSince}d ago` : ''
+                        : d.daysSince != null ? `${d.daysSince}d ago`
+                        : d.rate  != null ? `${d.rate}%` : ''
             return (
               <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 16px', borderBottom: i < dim.details.length-1 ? '1px solid var(--border)' : 'none' }}>
                 <span style={{ flex:1, fontSize:13, color:'var(--text-2)' }}>{metricLabel}</span>

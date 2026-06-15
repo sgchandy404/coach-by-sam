@@ -289,7 +289,7 @@ export const evaluateAttendance = (attendanceRecords, membershipType, windowDays
                  : rate >= 0.6  ? STATUS.STAGNANT
                  : STATUS.DECLINING
 
-  return { status, details: [{ attended, expected, rate: +(rate * 100).toFixed(0) }] }
+  return { status, details: [{ name: `${attended} / ${expected} sessions`, attended, expected, rate: +(rate * 100).toFixed(0), status }] }
 }
 
 // ── Full client evaluation ─────────────────────────────────────────────────────
