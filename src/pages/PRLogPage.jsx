@@ -54,9 +54,6 @@ export default function PRLogPage({ clientId, setClientId }) {
                       <span style={{ fontWeight:700, fontSize:17, color:'var(--accent)' }}>
                         {formatValue(pr.value, pr.type, pr.unit)}
                       </span>
-                      <span className={`pill pill-${pr.period === 'weekly' ? 'teal' : 'purple'}`} style={{ fontSize:11 }}>
-                        {pr.period}
-                      </span>
                     </div>
                     <p style={{ fontSize:12, color:'var(--text-3)', marginTop:2 }}>
                       {pr.date}{pr.notes ? ` · ${pr.notes}` : ''}
@@ -109,7 +106,7 @@ export default function PRLogPage({ clientId, setClientId }) {
 
 function AddPRModal({ exercises, onClose, onSave }) {
   const [exId, setExId]     = useState(exercises[0]?.id || '')
-  const [period, setPeriod] = useState('weekly')
+
   const [date, setDate]     = useState(format(new Date(), 'yyyy-MM-dd'))
   const [value, setValue]   = useState('')
   const [notes, setNotes]   = useState('')
@@ -144,15 +141,7 @@ function AddPRModal({ exercises, onClose, onSave }) {
             <p style={{ fontSize:11, color:'var(--text-3)', marginTop:4 }}>Enter total seconds. 5 min = 300 s</p>
           )}
         </div>
-        <div className="form-group">
-          <label className="form-label">Period</label>
-          <div style={{ display:'flex', gap:8 }}>
-            {['weekly','monthly'].map(p => (
-              <button key={p} className={`btn btn-sm ${period === p ? 'btn-primary' : 'btn-outline'}`} style={{ flex:1 }}
-                onClick={() => setPeriod(p)}>{p.charAt(0).toUpperCase() + p.slice(1)}</button>
-            ))}
-          </div>
-        </div>
+
         <div className="form-group">
           <label className="form-label">Date</label>
           <input className="form-input" type="date" value={date} onChange={e => setDate(e.target.value)} />
@@ -166,7 +155,7 @@ function AddPRModal({ exercises, onClose, onSave }) {
           <button className="btn btn-primary btn-full" disabled={!value || saving}
             onClick={async () => {
               setSaving(true)
-              await onSave({ exerciseId: ex.id, exerciseName: ex.name, value: Number(value), type: ex.type, unit: ex.unit, period, date, notes: notes.trim() })
+              await onSave({ exerciseId: ex.id, exerciseName: ex.name, value: Number(value), type: ex.type, unit: ex.unit, date, notes: notes.trim() })
               setSaving(false)
             }}>
             {saving ? 'Saving…' : 'Save PR'}
