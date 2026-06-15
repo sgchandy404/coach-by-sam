@@ -35,7 +35,7 @@ export default function ClientsPage({ clientId, setClientId, setTab }) {
       const win = getMonthWindow(c.startDate, todayStr)
       if (win) return c.lastPaidCycleStart === formatDMY(win.windowStart)
     }
-    return c.paymentStatus === 'paid'
+    return false
   }
 
   const handlePaymentTap = async (e, c) => {
@@ -52,14 +52,16 @@ export default function ClientsPage({ clientId, setClientId, setTab }) {
     }
   }
 
-  const handleConfirmPayment = async (amount, cycleStart, cycleEnd) => {
+  const handleConfirmPayment = async (amount, paymentDate, cycleStart, cycleEnd, isCurrentCycle) => {
     const clientId = paymentModal.client.id
-    const todayStr = formatDMY(new Date())
-    await Promise.all([
-      updateClient(clientId, { paymentStatus: 'paid', lastPaidCycleStart: cycleStart }),
-      addPayment(clientId, { amount, date: todayStr, cycleStart, cycleEnd }),
-    ])
-    setClients(cs => cs.map(x => x.id === clientId ? { ...x, paymentStatus: 'paid', lastPaidCycleStart: cycleStart } : x))
+    const ops = [addPayment(clientId, { amount, date: paymentDate, cycleStart, cycleEnd })]
+    if (isCurrentCycle) {
+      ops.push(updateClient(clientId, { paymentStatus: 'paid', lastPaidCycleStart: cycleStart }))
+    }
+    await Promise.all(ops)
+    if (isCurrentCycle) {
+      setClients(cs => cs.map(x => x.id === clientId ? { ...x, paymentStatus: 'paid', lastPaidCycleStart: cycleStart } : x))
+    }
     setPaymentModal(null)
   }
 
@@ -767,13 +769,21 @@ const CalendarIcon = () => <svg width="15" height="15" viewBox="0 0 24 24" fill=
 
 // ── Payment modal (unpaid → paid) ─────────────────────────────────────────────
 function PaymentModal({ client, onConfirm, onClose }) {
-  const [amount, setAmount] = useState(client.monthlyFee ? String(client.monthlyFee) : '')
-  const [saving, setSaving] = useState(false)
+  const [amount, setAmount]         = useState(client.monthlyFee ? String(client.monthlyFee) : '')
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10)) // YYYY-MM-DD
+  const [saving, setSaving]         = useState(false)
 
-  const todayStr    = formatDMY(new Date())
-  const window      = client.startDate ? getMonthWindow(client.startDate, todayStr) : null
-  const cycleStart  = window ? formatDMY(window.windowStart) : null
-  const cycleEnd    = window ? formatDMY(window.windowEnd)   : null
+  // Recompute cycle from selected date
+  const selectedDMY  = fromHTMLDate(paymentDate)   // DD-MM-YYYY
+  const win          = (client.startDate && selectedDMY) ? getMonthWindow(client.startDate, selectedDMY) : null
+  const cycleStart   = win ? formatDMY(win.windowStart) : null
+  const cycleEnd     = win ? formatDMY(win.windowEnd)   : null
+
+  // Is the selected date within the current (today's) cycle?
+  const todayStr     = formatDMY(new Date())
+  const currentWin   = client.startDate ? getMonthWindow(client.startDate, todayStr) : null
+  const currentCycleStart = currentWin ? formatDMY(currentWin.windowStart) : null
+  const isCurrentCycle = !!(cycleStart && cycleStart === currentCycleStart)
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -787,25 +797,36 @@ function PaymentModal({ client, onConfirm, onClose }) {
           <p style={{ fontSize:13, color:'var(--text-2)' }}>{client.name}</p>
         </div>
         <div className="form-group">
-          <label className="form-label">Amount received (₹)</label>
-          <input className="form-input" type="number" min="0" placeholder="e.g. 3000"
-            value={amount} onChange={e => setAmount(e.target.value)} autoFocus />
+          <label className="form-label">Payment date</label>
+          <input className="form-input" type="date" value={paymentDate}
+            max={new Date().toISOString().slice(0, 10)}
+            onChange={e => setPaymentDate(e.target.value)} />
         </div>
         {cycleStart && cycleEnd && (
-          <p style={{ fontSize:12, color:'var(--text-3)', marginBottom:16, textAlign:'center' }}>
-            Cycle: {cycleStart} → {cycleEnd}
-          </p>
+          <div style={{ background: isCurrentCycle ? 'var(--accent-light)' : '#FDF3DC', borderRadius:'var(--r-sm)', padding:'8px 12px', marginBottom:14, textAlign:'center' }}>
+            <p style={{ fontSize:12, fontWeight:600, color: isCurrentCycle ? 'var(--accent-text)' : '#854F0B' }}>
+              {isCurrentCycle ? 'Current cycle' : 'Past cycle — added to history only'}
+            </p>
+            <p style={{ fontSize:11, color: isCurrentCycle ? 'var(--accent-text)' : '#854F0B', marginTop:2 }}>
+              {cycleStart} → {cycleEnd}
+            </p>
+          </div>
         )}
-        <div style={{ display:'flex', gap:10 }}>
+        <div className="form-group">
+          <label className="form-label">Amount received (₹)</label>
+          <input className="form-input" type="number" min="0" placeholder="e.g. 3000"
+            value={amount} onChange={e => setAmount(e.target.value)} />
+        </div>
+        <div style={{ display:'flex', gap:10, marginTop:4 }}>
           <button className="btn btn-outline btn-full" onClick={onClose}>Cancel</button>
           <button className="btn btn-primary btn-full"
             disabled={!amount || Number(amount) <= 0 || saving}
             onClick={async () => {
               setSaving(true)
-              await onConfirm(Number(amount), cycleStart, cycleEnd)
+              await onConfirm(Number(amount), selectedDMY, cycleStart, cycleEnd, isCurrentCycle)
               setSaving(false)
             }}>
-            {saving ? 'Saving…' : 'Confirm payment'}
+            {saving ? 'Saving…' : isCurrentCycle ? 'Confirm payment' : 'Add to history'}
           </button>
         </div>
       </div>
