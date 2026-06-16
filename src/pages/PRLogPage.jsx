@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
-import { format } from 'date-fns'
 import { getClients, getPRs, addPR, deletePR, getCustomExercises, addCustomExercise } from '../lib/firestore.js'
 import { DEFAULT_EXERCISES } from '../data/exercises.js'
-import { formatValue, groupBy } from '../lib/utils.js'
+import { formatValue, groupBy, formatDMY, dmy2display, display2dmy } from '../lib/utils.js'
 import ClientPicker from '../components/ClientPicker.jsx'
 import PageLoader from '../components/PageLoader.jsx'
 
@@ -53,9 +52,6 @@ export default function PRLogPage({ clientId, setClientId }) {
                     <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                       <span style={{ fontWeight:700, fontSize:17, color:'var(--accent)' }}>
                         {formatValue(pr.value, pr.type, pr.unit)}
-                      </span>
-                      <span className={`pill pill-${pr.period === 'weekly' ? 'teal' : 'purple'}`} style={{ fontSize:11 }}>
-                        {pr.period}
                       </span>
                     </div>
                     <p style={{ fontSize:12, color:'var(--text-3)', marginTop:2 }}>
@@ -109,8 +105,8 @@ export default function PRLogPage({ clientId, setClientId }) {
 
 function AddPRModal({ exercises, onClose, onSave }) {
   const [exId, setExId]     = useState(exercises[0]?.id || '')
-  const [period, setPeriod] = useState('weekly')
-  const [date, setDate]     = useState(format(new Date(), 'yyyy-MM-dd'))
+
+  const [date, setDate]     = useState(formatDMY(new Date()))
   const [value, setValue]   = useState('')
   const [notes, setNotes]   = useState('')
   const [saving, setSaving] = useState(false)
@@ -144,18 +140,11 @@ function AddPRModal({ exercises, onClose, onSave }) {
             <p style={{ fontSize:11, color:'var(--text-3)', marginTop:4 }}>Enter total seconds. 5 min = 300 s</p>
           )}
         </div>
-        <div className="form-group">
-          <label className="form-label">Period</label>
-          <div style={{ display:'flex', gap:8 }}>
-            {['weekly','monthly'].map(p => (
-              <button key={p} className={`btn btn-sm ${period === p ? 'btn-primary' : 'btn-outline'}`} style={{ flex:1 }}
-                onClick={() => setPeriod(p)}>{p.charAt(0).toUpperCase() + p.slice(1)}</button>
-            ))}
-          </div>
-        </div>
+
         <div className="form-group">
           <label className="form-label">Date</label>
-          <input className="form-input" type="date" value={date} onChange={e => setDate(e.target.value)} />
+          <input className="form-input" type="text" inputMode="numeric" placeholder="DD/MM/YYYY"
+            value={dmy2display(date)} onChange={e => setDate(display2dmy(e.target.value))} />
         </div>
         <div className="form-group">
           <label className="form-label">Notes (optional)</label>
@@ -166,7 +155,7 @@ function AddPRModal({ exercises, onClose, onSave }) {
           <button className="btn btn-primary btn-full" disabled={!value || saving}
             onClick={async () => {
               setSaving(true)
-              await onSave({ exerciseId: ex.id, exerciseName: ex.name, value: Number(value), type: ex.type, unit: ex.unit, period, date, notes: notes.trim() })
+              await onSave({ exerciseId: ex.id, exerciseName: ex.name, value: Number(value), type: ex.type, unit: ex.unit, date, notes: notes.trim() })
               setSaving(false)
             }}>
             {saving ? 'Saving…' : 'Save PR'}
@@ -211,7 +200,7 @@ function AddExerciseModal({ onClose, onSave }) {
           <button className="btn btn-primary btn-full" disabled={!name.trim() || saving}
             onClick={async () => {
               setSaving(true)
-              await onSave({ id: name.toLowerCase().replace(/\s+/g,'-'), name: name.trim(), category, type, unit: unitMap[type] })
+              await onSave({ id: name.toLowerCase().replace(/\s+/g,'-'), name: name.trim(), category: category.trim(), type, unit: unitMap[type] })
               setSaving(false)
             }}>
             {saving ? 'Saving…' : 'Add exercise'}

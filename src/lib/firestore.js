@@ -3,6 +3,7 @@ import {
   collection, doc, addDoc, updateDoc, deleteDoc, setDoc,
   getDocs, writeBatch, query, orderBy, serverTimestamp,
 } from 'firebase/firestore'
+import { getClassCycleInfo } from './utils.js'
 
 // ── Clients ───────────────────────────────────────────────────────────────────
 export const getClients = () =>
@@ -89,6 +90,41 @@ export const deletePayment = (clientId, paymentId) =>
 
 export const getAllClientsPayments = (clientIds) =>
   Promise.all(clientIds.map(id => getPayments(id).then(payments => ({ clientId: id, payments }))))
+
+// Recomputes balance, lastPaidCycleStart, lastPaidCycleEnd from all payments
+export const recomputeClientPaymentFields = async (clientId, fee) => {
+  const payments   = await getPayments(clientId)
+  const totalPaid  = payments.reduce((s, p) => s + (p.amount || 0), 0)
+  const balance    = totalPaid - (fee || 0)
+  const mostRecent = payments[0] || null
+  const lastPaidCycleIndex = payments.reduce((max, p) =>
+    p.cycleIndex != null ? Math.max(max, p.cycleIndex) : max, -1)
+  await updateDoc(doc(db, 'clients', clientId), {
+    balance,
+    lastPaidCycleStart: mostRecent?.cycleStart ?? null,
+    lastPaidCycleEnd:   mostRecent?.cycleEnd   ?? null,
+    lastPaidCycleIndex: lastPaidCycleIndex >= 0 ? lastPaidCycleIndex : null,
+  })
+}
+
+// Recomputes attendedThisCycle for a classes-based client.
+// currentCycleIndex is NOT recomputed here — it is advanced manually via startNextCycle.
+export const recomputeClassCycleFields = async (clientId, client) => {
+  const attendance = await getAttendance(clientId)
+  const info = getClassCycleInfo(client, attendance)
+  await updateDoc(doc(db, 'clients', clientId), {
+    attendedThisCycle: info.attendedThisCycle,
+  })
+}
+
+// Manually advance to the next cycle. Called when Sam taps "Start next cycle".
+export const startNextCycle = async (clientId, client, newStartDate) => {
+  await updateDoc(doc(db, 'clients', clientId), {
+    currentCycleIndex:     (client.currentCycleIndex ?? 0) + 1,
+    currentCycleStartDate: newStartDate,
+    attendedThisCycle:     0,
+  })
+}
 
 // ── Custom exercises ──────────────────────────────────────────────────────────
 export const getCustomExercises = () =>

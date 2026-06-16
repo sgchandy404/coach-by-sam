@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getClients, getAttendance, markAttended, unmarkAttended, updateAttendanceExercises } from '../lib/firestore.js'
 import { DEFAULT_EXERCISES } from '../data/exercises.js'
-import { getInitials, avatarColor, parseDMY, formatDMY, getMonthWindow } from '../lib/utils.js'
+import { getInitials, avatarColor, parseDMY, formatDMY, getMonthWindow, getClassCycleInfo } from '../lib/utils.js'
 import PageLoader from '../components/PageLoader.jsx'
 
 const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate()
@@ -160,6 +160,11 @@ export default function AttendancePage() {
         </p>
       )}
 
+      {/* Cycle attendance summary */}
+      {!loading && clients.filter(c => c.status === 'active').length > 0 && (
+        <CycleAttendanceSummary clients={clients} clientRecordsMap={clientRecordsMap} />
+      )}
+
       {selectedDay && (
         <DaySheet
           dateStr={selectedDay}
@@ -178,6 +183,7 @@ export default function AttendancePage() {
 // ── Day sheet modal ───────────────────────────────────────────────────────────
 function DaySheet({ dateStr, clients, attendanceMap, clientRecordsMap, onToggle, onUpdateExercises, onClose }) {
   const [exerciseClient, setExerciseClient] = useState(null) // client whose log is open
+  const [expanded, setExpanded] = useState(null) // clientId whose dot grid is open
 
   const [d, m, y] = dateStr.split('-').map(Number)
   const dayDate   = new Date(y, m - 1, d)
@@ -199,34 +205,47 @@ function DaySheet({ dateStr, clients, attendanceMap, clientRecordsMap, onToggle,
               const isAttended    = attended.has(c.id)
               const startD        = parseDMY(c.startDate)
               const isBeforeStart = startD && startD > dayDate
+              const isClasses     = c.cycleType === 'classes'
               const weekAttended  = weekDates.filter(ds => attendanceMap[ds]?.has(c.id)).length
-              const weekExpected  = c.membershipType || null
-              // 28-day cycle stats
-              const cycleWindow   = c.startDate ? getMonthWindow(c.startDate, dateStr) : null
-              const monthAttended = cycleWindow
-                ? (clientRecordsMap[c.id] || []).filter(r => {
-                    const d = parseDMY(r.date)
-                    return d && d >= cycleWindow.windowStart && d <= cycleWindow.windowEnd
-                  }).length
-                : null
-              const monthExpected = c.membershipType ? c.membershipType * 4 : null
+              const weekExpected  = !isClasses ? (c.membershipType || null) : null
+              // Cycle stats — branch on cycleType
+              const cycleWindow   = !isClasses && c.startDate ? getMonthWindow(c.startDate, dateStr) : null
+              const classInfo     = isClasses ? getClassCycleInfo(c, clientRecordsMap[c.id] || []) : null
+              const monthAttended = isClasses
+                ? (classInfo?.attendedThisCycle ?? 0)
+                : cycleWindow
+                  ? (clientRecordsMap[c.id] || []).filter(r => { const d = parseDMY(r.date); return d && d >= cycleWindow.windowStart && d <= cycleWindow.windowEnd }).length
+                  : null
+              const monthExpected = isClasses
+                ? (c.classesPerCycle || 10)
+                : c.membershipType ? c.membershipType * 4 : null
               // exercises logged for this client on this day
               const sessionRecord = (clientRecordsMap[c.id] || []).find(r => r.date === dateStr)
               const exCount       = sessionRecord?.exercises?.length || 0
 
+              const isExpanded = expanded === c.id
               return (
                 <div key={c.id}
-                  style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 2px',
-                    borderBottom:'1px solid var(--border)',
-                    opacity: isBeforeStart ? 0.4 : 1 }}>
+                  style={{ borderBottom:'1px solid var(--border)', opacity: isBeforeStart ? 0.4 : 1 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 2px' }}>
                   {/* Tap avatar+name area to toggle attendance */}
                   <div style={{ display:'flex', alignItems:'center', gap:12, flex:1, minWidth:0, cursor: isBeforeStart ? 'default' : 'pointer' }}
                     onClick={() => !isBeforeStart && onToggle(c.id, dateStr)}>
                     <div className="avatar" style={{ background: avatarColor(c.name), width:34, height:34, fontSize:12, flexShrink:0 }}>
                       {getInitials(c.name)}
                     </div>
-                    <div style={{ minWidth:0 }}>
-                      <p style={{ fontSize:14, fontWeight:500 }}>{c.name}</p>
+                    <div style={{ minWidth:0, flex:1 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                        <p style={{ fontSize:14, fontWeight:500 }}>{c.name}</p>
+                        {/* Expand toggle */}
+                        {cycleWindow && (
+                          <button
+                            onClick={e => { e.stopPropagation(); setExpanded(isExpanded ? null : c.id) }}
+                            style={{ background:'none', border:'none', cursor:'pointer', padding:'2px 4px', color:'var(--text-3)', fontSize:11, fontWeight:600 }}>
+                            {isExpanded ? '▲' : '▼'}
+                          </button>
+                        )}
+                      </div>
                       <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:2 }}>
                         {weekExpected && (
                           <span className="membership-badge">{c.membershipType}×/wk</span>
@@ -238,7 +257,7 @@ function DaySheet({ dateStr, clients, attendanceMap, clientRecordsMap, onToggle,
                         )}
                         {monthExpected != null && monthAttended != null && (
                           <span style={{ fontSize:11, color: monthAttended >= monthExpected ? 'var(--teal)' : 'var(--text-3)' }}>
-                            · {monthAttended}/{monthExpected} this cycle
+                            {weekExpected ? '· ' : ''}{monthAttended}/{monthExpected} {isClasses ? 'classes' : 'this cycle'}
                           </span>
                         )}
                       </div>
@@ -271,6 +290,16 @@ function DaySheet({ dateStr, clients, attendanceMap, clientRecordsMap, onToggle,
                     onClick={() => !isBeforeStart && onToggle(c.id, dateStr)}>
                     {isAttended && <TickIcon />}
                   </div>
+                  </div>{/* end inner flex row */}
+
+                  {/* Expanded 28-day dot grid */}
+                  {isExpanded && cycleWindow && (
+                    <ClientCycleDotGrid
+                      cycleWindow={cycleWindow}
+                      attendedDates={new Set((clientRecordsMap[c.id] || []).map(r => r.date))}
+                      dateStr={dateStr}
+                    />
+                  )}
                 </div>
               )
             })}
@@ -431,6 +460,99 @@ function ExerciseLogModal({ client, dateStr, allRecords, onUpdate, onClose }) {
         )}
 
         <button className="btn btn-ghost btn-full" onClick={onClose} style={{ marginTop:16 }}>Done</button>
+      </div>
+    </div>
+  )
+}
+
+// ── Cycle attendance summary (below calendar) ─────────────────────────────────
+function CycleAttendanceSummary({ clients, clientRecordsMap }) {
+  const today    = new Date()
+  const todayStr = formatDMY(today)
+
+  const activeClients = clients.filter(c => c.status === 'active')
+
+  const rows = activeClients.map(c => {
+    const records   = clientRecordsMap[c.id] || []
+    let attended, expected
+    if (c.cycleType === 'classes') {
+      const info = getClassCycleInfo(c, records)
+      attended = info.attendedThisCycle
+      expected = c.classesPerCycle || 10
+    } else {
+      const startRef = c.billingStartDate || c.startDate
+      const cycleWin = startRef ? getMonthWindow(startRef, todayStr) : null
+      attended = cycleWin
+        ? records.filter(r => { const d = parseDMY(r.date); return d && d >= cycleWin.windowStart && d <= cycleWin.windowEnd }).length
+        : 0
+      expected = (c.membershipType || 3) * 4
+    }
+    const rate = expected > 0 ? Math.round((attended / expected) * 100) : 0
+    return { c, attended, expected, rate }
+  }).sort((a, b) => a.rate - b.rate)
+
+  if (!rows.length) return null
+
+  return (
+    <div style={{ padding:'16px 16px 0' }}>
+      <p className="section-title" style={{ marginBottom:10 }}>Client progress</p>
+      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+        {rows.map(({ c, attended, expected, rate }) => {
+          const pillBg    = rate >= 85 ? 'var(--teal-light)' : rate >= 60 ? 'var(--amber-light)' : 'var(--coral-light)'
+          const pillColor = rate >= 85 ? 'var(--teal-text)'  : rate >= 60 ? 'var(--amber-text)'  : 'var(--coral-text)'
+          const barColor  = rate >= 85 ? 'var(--teal)'       : rate >= 60 ? 'var(--amber)'        : 'var(--coral)'
+          return (
+            <div key={c.id} style={{ background:'var(--surface)', borderRadius:12, border:'1px solid var(--border)', padding:'10px 12px', boxShadow:'var(--shadow-sm)' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
+                <div className="avatar" style={{ background:avatarColor(c.name), width:28, height:28, fontSize:10, flexShrink:0 }}>
+                  {getInitials(c.name)}
+                </div>
+                <p style={{ flex:1, fontSize:13, fontWeight:600, color:'var(--text)', minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.name}</p>
+                <span style={{ fontSize:12, fontWeight:600, color:'var(--text-2)', marginRight:6 }}>{attended}/{expected}</span>
+                <span style={{ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:100, background:pillBg, color:pillColor }}>{rate}%</span>
+              </div>
+              <div style={{ height:3, borderRadius:100, background:'var(--bg-2)', overflow:'hidden' }}>
+                <div style={{ height:'100%', width:`${Math.min(100, rate)}%`, background:barColor, borderRadius:100 }} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── 28-day dot grid for DaySheet expanded row ─────────────────────────────────
+function ClientCycleDotGrid({ cycleWindow, attendedDates, dateStr }) {
+  const [refD, refM, refY] = dateStr.split('-').map(Number)
+  const refDate  = new Date(refY, refM - 1, refD)
+  const msPerDay = 86400000
+  const { windowStart } = cycleWindow
+
+  return (
+    <div style={{ padding:'8px 2px 10px 36px' }}>
+      <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+        {[0,1,2,3].map(week => (
+          <div key={week} style={{ display:'flex', gap:4 }}>
+            {[0,1,2,3,4,5,6].map(dayOff => {
+              const cellDate = new Date(windowStart.getTime() + (week*7 + dayOff) * msPerDay)
+              const dStr     = formatDMY(cellDate)
+              const isAtt    = attendedDates.has(dStr)
+              const isFuture = cellDate > refDate
+              const isRef    = cellDate.toDateString() === refDate.toDateString()
+              return (
+                <div key={dayOff} style={{
+                  width:22, height:22, borderRadius:'50%',
+                  background: isAtt ? 'var(--teal)' : 'transparent',
+                  border: `1.5px solid ${isAtt ? 'var(--teal)' : isFuture ? 'var(--border)' : 'var(--border-mid)'}`,
+                  opacity: isFuture ? 0.35 : 1,
+                  outline: isRef ? '2px solid var(--accent)' : 'none',
+                  outlineOffset: 1,
+                }} />
+              )
+            })}
+          </div>
+        ))}
       </div>
     </div>
   )

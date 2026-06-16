@@ -19,6 +19,7 @@ export default function App() {
   const [tab, setTab]           = useState('clients')
   const [showSettings, setShowSettings] = useState(false)
   const [selectedClientId, setSelectedClientId] = useState(null)
+  const [clientsNavKey, setClientsNavKey] = useState(0)
 
   useEffect(() => {
     let unsubscribe = () => {}
@@ -43,7 +44,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <div className="page">
-        {tab === 'clients'      && <ClientsPage     {...clientProps} setTab={setTab} />}
+        {tab === 'clients'      && <ClientsPage     {...clientProps} setTab={setTab} navResetKey={clientsNavKey} />}
         {tab === 'prs'          && <PRLogPage        {...clientProps} />}
         {tab === 'attributes'   && <AttributesPage   {...clientProps} />}
         {tab === 'measurements' && <MeasurementsPage {...clientProps} />}
@@ -51,7 +52,8 @@ export default function App() {
         {tab === 'attendance'   && <AttendancePage />}
         {tab === 'revenue'      && <RevenuePage />}
       </div>
-      <BottomNav tab={tab} setTab={setTab} onSettings={() => setShowSettings(true)} />
+      <BottomNav tab={tab} setTab={setTab} onSettings={() => setShowSettings(true)}
+        onClientsTab={() => { setTab('clients'); setSelectedClientId(null); setClientsNavKey(k => k + 1) }} />
       {showSettings && <SettingsPage onDone={() => setShowSettings(false)} />}
     </div>
   )

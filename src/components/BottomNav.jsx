@@ -1,6 +1,6 @@
-export default function BottomNav({ tab, setTab, onSettings }) {
+export default function BottomNav({ tab, setTab, onSettings, onClientsTab }) {
   const items = [
-    { key:'clients',      label:'Clients',    Icon: PeopleIcon  },
+    { key:'clients',      label:'Clients',    Icon: PeopleIcon, onClick: onClientsTab },
     { key:'prs',          label:'PRs',        Icon: TrophyIcon  },
     { key:'attributes',   label:'Attributes', Icon: RadarIcon   },
     { key:'measurements', label:'Measures',   Icon: RulerIcon   },
@@ -10,8 +10,8 @@ export default function BottomNav({ tab, setTab, onSettings }) {
   ]
   return (
     <nav className="bottom-nav">
-      {items.map(({ key, label, Icon }) => (
-        <button key={key} className={`nav-item${tab === key ? ' active' : ''}`} onClick={() => setTab(key)}>
+      {items.map(({ key, label, Icon, onClick }) => (
+        <button key={key} className={`nav-item${tab === key ? ' active' : ''}`} onClick={onClick || (() => setTab(key))}>
           <Icon />
           {label}
         </button>
