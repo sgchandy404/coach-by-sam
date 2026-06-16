@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { format } from 'date-fns'
 import { getClients, getMeasurements, addMeasurement, deleteMeasurement } from '../lib/firestore.js'
 import { DEFAULT_MEASUREMENTS } from '../data/exercises.js'
+import { formatDMY, dmy2display, display2dmy } from '../lib/utils.js'
 import ClientPicker from '../components/ClientPicker.jsx'
 import PageLoader from '../components/PageLoader.jsx'
 
@@ -93,7 +93,7 @@ export default function MeasurementsPage({ clientId, setClientId }) {
 }
 
 function AddMeasurementsModal({ onClose, onSave }) {
-  const [date, setDate]     = useState(format(new Date(), 'yyyy-MM-dd'))
+  const [date, setDate]     = useState(formatDMY(new Date()))
   const [values, setValues] = useState({})
   const [saving, setSaving] = useState(false)
 
@@ -106,7 +106,8 @@ function AddMeasurementsModal({ onClose, onSave }) {
         <p className="modal-title">Log measurements</p>
         <div className="form-group">
           <label className="form-label">Date</label>
-          <input className="form-input" type="date" value={date} onChange={e => setDate(e.target.value)} />
+          <input className="form-input" type="text" inputMode="numeric" placeholder="DD/MM/YYYY"
+            value={dmy2display(date)} onChange={e => setDate(display2dmy(e.target.value))} />
         </div>
         <p style={{ fontSize:12, color:'var(--text-3)', marginBottom:12 }}>Leave blank any measurements not taken today.</p>
         {DEFAULT_MEASUREMENTS.map(m => (

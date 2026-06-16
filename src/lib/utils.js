@@ -79,6 +79,87 @@ export const getMonthWindow = (startDateStr, targetDateStr) => {
   return { windowStart, windowEnd }
 }
 
+// ── Billing cycle helpers ─────────────────────────────────────────────────────
+
+// Returns { cycleStart: 'DD-MM-YYYY', cycleEnd: 'DD-MM-YYYY', cycleIndex: number }
+// or null if targetDate is before startDate or inputs are invalid.
+export const getCycleWindow = (startDateStr, targetDateStr) => {
+  const start  = parseDMY(startDateStr)
+  const target = parseDMY(targetDateStr)
+  if (!start || !target) return null
+  const msPerDay   = 86400000
+  const daysSince  = Math.floor((target - start) / msPerDay)
+  if (daysSince < 0) return null
+  const cycleIndex  = Math.floor(daysSince / 28)
+  const windowStart = new Date(start.getTime() + cycleIndex * 28 * msPerDay)
+  const windowEnd   = new Date(windowStart.getTime() + 27 * msPerDay)
+  return {
+    cycleStart: formatDMY(windowStart),
+    cycleEnd:   formatDMY(windowEnd),
+    cycleIndex,
+  }
+}
+
+// Returns 'paid' | 'partial' | 'overdue' | 'unpaid'
+export const getPaymentStatus = (client) => {
+  // Classes-based: use cycle index to determine if current cycle is paid
+  if (client.cycleType === 'classes') {
+    const currentIndex  = client.currentCycleIndex ?? 0
+    const lastPaidIndex = client.lastPaidCycleIndex ?? -1
+    if (lastPaidIndex >= currentIndex) return 'paid'
+    const balance = client.balance ?? 0
+    if (balance > 0) return 'partial'
+    return 'unpaid'
+  }
+
+  if (!client.billingStartDate && !client.startDate) return 'unpaid'
+  const anchorDate = client.billingStartDate || client.startDate
+  const todayStr   = formatDMY(new Date())
+  const cycle      = getCycleWindow(anchorDate, todayStr)
+  if (!cycle) return 'unpaid'
+
+  const { cycleStart } = cycle
+  const balance        = client.balance ?? 0
+  const fee            = client.monthlyFee || 0
+
+  // Paid: last payment covers this cycle and balance ≥ 0
+  if (client.lastPaidCycleStart === cycleStart && balance >= 0) return 'paid'
+
+  // Partial: something paid but less than full fee
+  if (balance > 0 && balance < fee) return 'partial'
+
+  // Overdue: 14+ days into cycle, nothing paid
+  const cycleStartDate = parseDMY(cycleStart)
+  const today          = parseDMY(todayStr)
+  const daysSince      = cycleStartDate ? Math.floor((today - cycleStartDate) / 86400000) : 0
+  if (daysSince >= 14) return 'overdue'
+
+  return 'unpaid'
+}
+
+// Formats a number as ₹X,XX,XXX (Indian locale)
+export const formatINR = (amount) =>
+  '₹' + Number(amount || 0).toLocaleString('en-IN')
+
+// DD-MM-YYYY ↔ DD/MM/YYYY (for text date inputs — avoids browser locale on type="date")
+export const dmy2display = (dmy)     => (dmy  || '').replace(/-/g, '/')
+export const display2dmy = (display) => (display || '').replace(/\//g, '-')
+
+// Returns cycle info for a classes-based client.
+// attendanceRecords: array of { date: 'DD-MM-YYYY' }
+// cycleIndex is now manually advanced by Sam — not derived from attendance count.
+export const getClassCycleInfo = (client, attendanceRecords = []) => {
+  const perCycle    = client.classesPerCycle || 10
+  const cycleStart  = parseDMY(client.currentCycleStartDate) || parseDMY(client.startDate)
+  const cycleIndex  = client.currentCycleIndex ?? 0
+  if (!cycleStart) return { cycleIndex, attendedThisCycle: 0, classesPerCycle: perCycle, progress: 0, cycleComplete: false }
+  const attended = attendanceRecords
+    .filter(r => { const d = parseDMY(r.date); return d && d >= cycleStart })
+    .length
+  const cycleComplete = attended >= perCycle
+  return { cycleIndex, attendedThisCycle: attended, classesPerCycle: perCycle, progress: Math.min(1, attended / perCycle), cycleComplete }
+}
+
 // Next Monday from today as DD-MM-YYYY
 export const nextMondayDMY = () => {
   const now = new Date()
