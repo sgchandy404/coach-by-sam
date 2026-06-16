@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
-import { format } from 'date-fns'
 import { getClients, getPRs, addPR, deletePR, getCustomExercises, addCustomExercise } from '../lib/firestore.js'
 import { DEFAULT_EXERCISES } from '../data/exercises.js'
-import { formatValue, groupBy } from '../lib/utils.js'
+import { formatValue, groupBy, formatDMY, dmy2display, display2dmy } from '../lib/utils.js'
 import ClientPicker from '../components/ClientPicker.jsx'
 import PageLoader from '../components/PageLoader.jsx'
 
@@ -107,7 +106,7 @@ export default function PRLogPage({ clientId, setClientId }) {
 function AddPRModal({ exercises, onClose, onSave }) {
   const [exId, setExId]     = useState(exercises[0]?.id || '')
 
-  const [date, setDate]     = useState(format(new Date(), 'yyyy-MM-dd'))
+  const [date, setDate]     = useState(formatDMY(new Date()))
   const [value, setValue]   = useState('')
   const [notes, setNotes]   = useState('')
   const [saving, setSaving] = useState(false)
@@ -144,7 +143,8 @@ function AddPRModal({ exercises, onClose, onSave }) {
 
         <div className="form-group">
           <label className="form-label">Date</label>
-          <input className="form-input" type="date" value={date} onChange={e => setDate(e.target.value)} />
+          <input className="form-input" type="text" inputMode="numeric" placeholder="DD/MM/YYYY"
+            value={dmy2display(date)} onChange={e => setDate(display2dmy(e.target.value))} />
         </div>
         <div className="form-group">
           <label className="form-label">Notes (optional)</label>

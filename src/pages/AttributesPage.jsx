@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { format } from 'date-fns'
 import { getClients, getAttributes, addAttributes, deleteAttributes } from '../lib/firestore.js'
 import { DEFAULT_ATTRIBUTES } from '../data/exercises.js'
+import { formatDMY, dmy2display, display2dmy } from '../lib/utils.js'
 import ClientPicker from '../components/ClientPicker.jsx'
 import PageLoader from '../components/PageLoader.jsx'
 
@@ -82,7 +82,7 @@ export default function AttributesPage({ clientId, setClientId }) {
 }
 
 function AddAttributesModal({ onClose, onSave }) {
-  const [date, setDate]     = useState(format(new Date(), 'yyyy-MM-dd'))
+  const [date, setDate]     = useState(formatDMY(new Date()))
   const [scores, setScores] = useState(Object.fromEntries(DEFAULT_ATTRIBUTES.map(a => [a, 5])))
   const [saving, setSaving] = useState(false)
 
@@ -93,7 +93,8 @@ function AddAttributesModal({ onClose, onSave }) {
         <p className="modal-title">Rate attributes</p>
         <div className="form-group">
           <label className="form-label">Date</label>
-          <input className="form-input" type="date" value={date} onChange={e => setDate(e.target.value)} />
+          <input className="form-input" type="text" inputMode="numeric" placeholder="DD/MM/YYYY"
+            value={dmy2display(date)} onChange={e => setDate(display2dmy(e.target.value))} />
         </div>
         {DEFAULT_ATTRIBUTES.map(attr => (
           <div key={attr} style={{ marginBottom:18 }}>
