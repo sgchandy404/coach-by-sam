@@ -45,7 +45,7 @@ export default function RevenuePage() {
   const collected = clients.reduce((sum, c) => {
     const payments = paymentsByClient[c.id] || []
     return sum + payments
-      .filter(p => p.cycleStart && p.cycleStart.slice(3) === monthStr)
+      .filter(p => ((p.cycleStart || p.date) || '').slice(3) === monthStr)
       .reduce((s, p) => s + (p.amount || 0), 0)
   }, 0)
   const outstanding = expected - collected   // negative = over-collected
