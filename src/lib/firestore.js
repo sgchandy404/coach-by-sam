@@ -3,7 +3,7 @@ import {
   collection, doc, addDoc, updateDoc, deleteDoc, setDoc,
   getDocs, writeBatch, query, orderBy, serverTimestamp,
 } from 'firebase/firestore'
-import { getClassCycleInfo } from './utils.js'
+import { getClassCycleInfo, parseDMY } from './utils.js'
 
 // ── Clients ───────────────────────────────────────────────────────────────────
 export const getClients = () =>
@@ -18,7 +18,7 @@ export const updateClient = (id, data) =>
 
 // Full delete: removes client doc + all subcollection documents
 export const deleteClientFull = async (id) => {
-  const subcols = ['prs', 'attributes', 'measurements', 'attendance', 'payments']
+  const subcols = ['prs', 'attributes', 'measurements', 'attendance', 'payments', 'billingPeriods']
   const batch = writeBatch(db)
   for (const sub of subcols) {
     const snap = await getDocs(collection(db, 'clients', id, sub))
@@ -38,6 +38,9 @@ export const addPR = (clientId, data) =>
 
 export const deletePR = (clientId, prId) =>
   deleteDoc(doc(db, 'clients', clientId, 'prs', prId))
+
+export const updatePR = (clientId, prId, data) =>
+  updateDoc(doc(db, 'clients', clientId, 'prs', prId), data)
 
 // ── Attributes ────────────────────────────────────────────────────────────────
 export const getAttributes = (clientId) =>
@@ -91,19 +94,43 @@ export const deletePayment = (clientId, paymentId) =>
 export const getAllClientsPayments = (clientIds) =>
   Promise.all(clientIds.map(id => getPayments(id).then(payments => ({ clientId: id, payments }))))
 
-// Recomputes balance, lastPaidCycleStart, lastPaidCycleEnd from all payments
-export const recomputeClientPaymentFields = async (clientId, fee) => {
-  const payments   = await getPayments(clientId)
-  const totalPaid  = payments.reduce((s, p) => s + (p.amount || 0), 0)
-  const balance    = totalPaid - (fee || 0)
-  const mostRecent = payments[0] || null
+// ── Billing periods ───────────────────────────────────────────────────────────
+export const getBillingPeriods = (clientId) =>
+  getDocs(query(collection(db, 'clients', clientId, 'billingPeriods'), orderBy('createdAt')))
+    .then(s => s.docs.map(d => ({ id: d.id, ...d.data() })))
+
+export const addBillingPeriod = (clientId, data) =>
+  addDoc(collection(db, 'clients', clientId, 'billingPeriods'), { ...data, createdAt: serverTimestamp() })
+
+export const closeBillingPeriod = (clientId, periodId, endDate) =>
+  updateDoc(doc(db, 'clients', clientId, 'billingPeriods', periodId), { endDate })
+
+// Recomputes balance from payments in the current billing period.
+// periodStartDate (DD-MM-YYYY): only payments on/after this date are counted.
+// carryForwardAmount: outstanding debt carried from the previous billing period.
+//   Folded into effectiveFee so balance naturally drains to 0 as payments accumulate.
+//   Cleared on the client doc automatically once balance >= 0.
+export const recomputeClientPaymentFields = async (clientId, fee, periodStartDate = null, carryForwardAmount = 0) => {
+  const allPayments = await getPayments(clientId)
+  const periodStart = periodStartDate ? parseDMY(periodStartDate) : null
+  const payments    = periodStart
+    ? allPayments.filter(p => { const d = parseDMY(p.date); return d && d >= periodStart })
+    : allPayments
+  const totalPaid     = payments.reduce((s, p) => s + (p.amount || 0), 0)
+  const effectiveFee  = (fee || 0) + (carryForwardAmount || 0)
+  const balance       = totalPaid - effectiveFee
+  const mostRecent    = payments[0] || null
   const lastPaidCycleIndex = payments.reduce((max, p) =>
     p.cycleIndex != null ? Math.max(max, p.cycleIndex) : max, -1)
   await updateDoc(doc(db, 'clients', clientId), {
     balance,
-    lastPaidCycleStart: mostRecent?.cycleStart ?? null,
-    lastPaidCycleEnd:   mostRecent?.cycleEnd   ?? null,
-    lastPaidCycleIndex: lastPaidCycleIndex >= 0 ? lastPaidCycleIndex : null,
+    lastPaidCycleStart:  mostRecent?.cycleStart ?? null,
+    lastPaidCycleEnd:    mostRecent?.cycleEnd   ?? null,
+    lastPaidCycleIndex:  lastPaidCycleIndex >= 0 ? lastPaidCycleIndex : null,
+    // carryForwardAmount is set here so it persists across payment recordings.
+    // Do NOT auto-clear when balance >= 0 — the display formula depends on it.
+    // It resets only when billing changes (change-billing handler passes the new value).
+    carryForwardAmount:  carryForwardAmount || 0,
   })
 }
 

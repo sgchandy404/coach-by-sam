@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getClients, getPRs, addPR, deletePR, getCustomExercises, addCustomExercise } from '../lib/firestore.js'
+import { getClients, getPRs, addPR, deletePR, updatePR, getCustomExercises, addCustomExercise } from '../lib/firestore.js'
 import { DEFAULT_EXERCISES } from '../data/exercises.js'
 import { formatValue, groupBy, formatDMY, dmy2display, display2dmy } from '../lib/utils.js'
 import ClientPicker from '../components/ClientPicker.jsx'
@@ -11,6 +11,7 @@ export default function PRLogPage({ clientId, setClientId }) {
   const [customEx, setCustomEx] = useState([])
   const [showAdd, setShowAdd]   = useState(false)
   const [showAddEx, setShowAddEx] = useState(false)
+  const [editingPR, setEditingPR] = useState(null)
   const [loading, setLoading]   = useState(false)
 
   useEffect(() => { getClients().then(setClients) }, [])
@@ -58,6 +59,9 @@ export default function PRLogPage({ clientId, setClientId }) {
                       {pr.date}{pr.notes ? ` · ${pr.notes}` : ''}
                     </p>
                   </div>
+                  <button className="btn btn-ghost btn-icon" onClick={() => setEditingPR(pr)} style={{ color:'var(--text-3)' }}>
+                    <EditIcon />
+                  </button>
                   <button className="btn btn-ghost btn-icon" onClick={() => handleDelete(pr.id)} style={{ color:'var(--text-3)' }}>
                     <TrashIcon />
                   </button>
@@ -89,6 +93,14 @@ export default function PRLogPage({ clientId, setClientId }) {
             const ref = await addPR(clientId, data)
             setPRs(p => [{ id: ref.id, ...data }, ...p])
             setShowAdd(false)
+          }} />
+      )}
+      {editingPR && (
+        <EditPRModal pr={editingPR} exercises={allExercises} onClose={() => setEditingPR(null)}
+          onSave={async (data) => {
+            await updatePR(clientId, editingPR.id, data)
+            setPRs(p => p.map(x => x.id === editingPR.id ? { ...x, ...data } : x))
+            setEditingPR(null)
           }} />
       )}
       {showAddEx && (
@@ -166,6 +178,54 @@ function AddPRModal({ exercises, onClose, onSave }) {
   )
 }
 
+function EditPRModal({ pr, exercises, onClose, onSave }) {
+  const [date, setDate]     = useState(pr.date || formatDMY(new Date()))
+  const [value, setValue]   = useState(String(pr.value ?? ''))
+  const [notes, setNotes]   = useState(pr.notes || '')
+  const [saving, setSaving] = useState(false)
+
+  const ex = exercises.find(e => e.id === pr.exerciseId) || { type: pr.type, unit: pr.unit, name: pr.exerciseName }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-handle" />
+        <p className="modal-title">Edit PR — {pr.exerciseName}</p>
+        <div className="form-group">
+          <label className="form-label">
+            {ex?.type === 'time' ? 'Time (seconds)' : ex?.type === 'reps' ? 'Max reps' : `Weight (${ex?.unit || 'kg'})`}
+          </label>
+          <input className="form-input" type="number" inputMode="decimal" min="0" step="0.5"
+            value={value} onChange={e => setValue(e.target.value)} autoFocus />
+          {ex?.type === 'time' && (
+            <p style={{ fontSize:11, color:'var(--text-3)', marginTop:4 }}>Enter total seconds. 5 min = 300 s</p>
+          )}
+        </div>
+        <div className="form-group">
+          <label className="form-label">Date</label>
+          <input className="form-input" type="text" inputMode="numeric" placeholder="DD/MM/YYYY"
+            value={dmy2display(date)} onChange={e => setDate(display2dmy(e.target.value))} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Notes (optional)</label>
+          <input className="form-input" placeholder="e.g. PB after 3 months" value={notes} onChange={e => setNotes(e.target.value)} />
+        </div>
+        <div style={{ display:'flex', gap:10, marginTop:8 }}>
+          <button className="btn btn-outline btn-full" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary btn-full" disabled={!value || saving}
+            onClick={async () => {
+              setSaving(true)
+              await onSave({ value: Number(value), date, notes: notes.trim() })
+              setSaving(false)
+            }}>
+            {saving ? 'Saving…' : 'Update PR'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function AddExerciseModal({ onClose, onSave }) {
   const [name, setName]         = useState('')
   const [category, setCategory] = useState('Custom')
@@ -210,6 +270,8 @@ function AddExerciseModal({ onClose, onSave }) {
     </div>
   )
 }
+
+const EditIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
 
 const TrashIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
 

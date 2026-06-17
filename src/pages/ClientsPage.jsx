@@ -7,6 +7,7 @@ import {
   markAttended, unmarkAttended,
   addPayment, getPayments, deletePayment,
   recomputeClientPaymentFields, recomputeClassCycleFields, startNextCycle,
+  getBillingPeriods, addBillingPeriod, closeBillingPeriod,
 } from '../lib/firestore.js'
 import {
   getInitials, avatarColor, parseDMY, formatDMY,
@@ -330,7 +331,21 @@ export default function ClientsPage({ clientId, setClientId, setTab, navResetKey
 
       {showAdd && (
         <AddClientModal onClose={() => setShowAdd(false)}
-          onSave={async (data) => { await addClient(data); await load(); setShowAdd(false) }} />
+          onSave={async (data) => {
+            const ref = await addClient(data)
+            await addBillingPeriod(ref.id, {
+              startDate:       data.startDate,
+              endDate:         null,
+              cycleType:       data.cycleType,
+              membershipType:  data.cycleType === 'time' ? data.membershipType : null,
+              classesPerCycle: data.cycleType === 'classes' ? data.classesPerCycle : null,
+              billingType:     data.billingType,
+              monthlyFee:      data.monthlyFee ?? null,
+              sessionRate:     data.sessionRate ?? null,
+              label:           null,
+            })
+            await load(); setShowAdd(false)
+          }} />
       )}
       {managing && (
         <ManageClientModal client={managing} onClose={() => setManaging(null)}
@@ -352,6 +367,36 @@ export default function ClientsPage({ clientId, setClientId, setTab, navResetKey
   )
 }
 
+// ── Billing period helpers ────────────────────────────────────────────────────
+function syntheticPeriod(client) {
+  return { id: '__synthetic__', startDate: client.startDate, endDate: null,
+    cycleType: client.cycleType, membershipType: client.membershipType,
+    classesPerCycle: client.classesPerCycle, billingType: client.billingType,
+    monthlyFee: client.monthlyFee, sessionRate: client.sessionRate, label: null }
+}
+
+function paymentsForPeriod(payments, period) {
+  const start = parseDMY(period.startDate)
+  const end   = period.endDate ? parseDMY(period.endDate) : null
+  return payments.filter(p => {
+    const d = parseDMY(p.date)
+    return d && start && d >= start && (!end || d < end)
+  })
+}
+
+function periodLabel(period) {
+  const type = period.cycleType === 'classes' ? 'Classes' : 'Monthly'
+  const freq = period.cycleType === 'classes'
+    ? `${period.classesPerCycle ?? '?'}/cycle`
+    : `${period.membershipType ?? '?'}×/wk`
+  const fmt = dmy => parseDMY(dmy)?.toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' }) ?? '?'
+  const dateRange = `${fmt(period.startDate)} – ${period.endDate ? fmt(period.endDate) : 'onwards'}`
+  const fee = period.billingType === 'monthly'
+    ? formatINR(period.monthlyFee ?? 0)
+    : `${formatINR(period.sessionRate ?? 0)}/class`
+  return `${type} · ${freq} · ${dateRange} · ${fee}`
+}
+
 // ── Client profile (full-screen in-tab view) ──────────────────────────────────
 function ClientProfile({ client: initialClient, onBack, onManage, onEdit, onPayment }) {
   const [client, setClientLocal]     = useState(initialClient)
@@ -361,6 +406,7 @@ function ClientProfile({ client: initialClient, onBack, onManage, onEdit, onPaym
   const [nextCycleDate, setNextCycleDate] = useState(null)  // null = UI hidden
   const [startingCycle, setStartingCycle] = useState(false)
   const [deletingPayment, setDeletingPayment] = useState(null)
+  const [billingPeriods, setBillingPeriods] = useState([])
 
   const handleDeletePayment = async (p) => {
     if (!window.confirm(`Delete payment of ${formatINR(p.amount)} on ${p.date}?`)) return
@@ -371,17 +417,17 @@ function ClientProfile({ client: initialClient, onBack, onManage, onEdit, onPaym
       ? (client.classesPerCycle || 1) * (client.sessionRate || 0)
       : (client.monthlyFee || 0)
     await deletePayment(client.id, p.id)
-    await recomputeClientPaymentFields(client.id, cycleFee)
+    await recomputeClientPaymentFields(client.id, cycleFee, client.billingStartDate || client.startDate, client.carryForwardAmount ?? 0)
     setPayments(ps => ps.filter(x => x.id !== p.id))
     setDeletingPayment(null)
   }
 
   useEffect(() => {
     setFetching(true)
-    Promise.all([getPayments(client.id), getAttendance(client.id)]).then(([pays, atts]) => {
-      setPayments(pays); setAttendance(atts); setFetching(false)
+    Promise.all([getPayments(client.id), getAttendance(client.id), getBillingPeriods(client.id)]).then(([pays, atts, periods]) => {
+      setPayments(pays); setAttendance(atts); setBillingPeriods(periods); setFetching(false)
     })
-  }, [client.id])
+  }, [client.id, client.billingStartDate])
 
   useEffect(() => { setClientLocal(initialClient) }, [initialClient])
 
@@ -405,6 +451,14 @@ function ClientProfile({ client: initialClient, onBack, onManage, onEdit, onPaym
   const pStyle   = PAYMENT_STATUS_STYLE[pStatus]
   const balance  = client.balance ?? null
   const lastPay  = payments[0] || null
+  // For per-session classes, balance reflects the full cycle fee (classesPerCycle × rate)
+  // but clients pay as they go. Display balance = what's actually owed right now:
+  // carryForward + attended×rate − totalPaid.
+  // Formula: balance + (classesPerCycle − attendedThisCycle) × sessionRate
+  const isSessions = client.billingType === 'per_session'
+  const displayBalance = (isClasses && isSessions && balance != null)
+    ? balance + ((client.classesPerCycle ?? 0) - (client.attendedThisCycle ?? 0)) * (client.sessionRate ?? 0)
+    : balance
 
   const classCycleStart = isClasses ? (parseDMY(client.currentCycleStartDate) || parseDMY(client.startDate)) : null
   const cycleRecords = isClasses
@@ -445,7 +499,11 @@ function ClientProfile({ client: initialClient, onBack, onManage, onEdit, onPaym
               <p className="section-title" style={{ marginBottom:0 }}>
                 {isClasses ? `Cycle ${(classInfo?.cycleIndex ?? 0) + 1}` : 'Current cycle'}
               </p>
-              {!isClasses && cycleWin && <span style={{ fontSize:11, color:'var(--text-3)' }}>Day {elapsed} of 28 · {remaining}d left</span>}
+              {!isClasses && cycleWin && (
+                <span style={{ fontSize:11, color:'var(--text-3)' }}>
+                  {client.membershipType ? `${client.membershipType}×/wk · ` : ''}{attended}/{expected} · {remaining}d left
+                </span>
+              )}
               {isClasses && !classInfo?.cycleComplete && <span style={{ fontSize:11, color:'var(--text-3)' }}>{attended} of {expected} classes</span>}
             </div>
             {isClasses ? (
@@ -514,9 +572,9 @@ function ClientProfile({ client: initialClient, onBack, onManage, onEdit, onPaym
                 background: pStyle.color + '22', color: pStyle.color, border:`1px solid ${pStyle.color}55` }}>
                 {pStyle.label}
               </span>
-              {balance != null && (
-                <span style={{ fontSize:13, fontWeight:700, color: balance >= 0 ? 'var(--teal)' : 'var(--coral)' }}>
-                  {balance >= 0 ? formatINR(balance) : `−${formatINR(Math.abs(balance))}`} balance
+              {displayBalance != null && displayBalance !== 0 && (
+                <span style={{ fontSize:13, fontWeight:700, color: displayBalance >= 0 ? 'var(--teal)' : 'var(--coral)' }}>
+                  {displayBalance >= 0 ? `+${formatINR(displayBalance)}` : `−${formatINR(Math.abs(displayBalance))}`}
                 </span>
               )}
             </div>
@@ -556,6 +614,50 @@ function ClientProfile({ client: initialClient, onBack, onManage, onEdit, onPaym
               </div>
             )}
           </div>
+
+          {/* Billing history card */}
+          {(() => {
+            const periods = billingPeriods.length > 0 ? billingPeriods : [syntheticPeriod(client)]
+            const memberSince = client.originalStartDate || client.startDate
+            return (
+              <div className="card">
+                <p className="section-title" style={{ marginBottom:10 }}>Billing history</p>
+                {memberSince && (
+                  <p style={{ fontSize:12, color:'var(--text-3)', marginBottom:12 }}>
+                    Member since: {parseDMY(memberSince)?.toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' }) ?? memberSince}
+                  </p>
+                )}
+                {periods.map((period, pi) => {
+                  const pps = paymentsForPeriod(payments, period)
+                  return (
+                    <div key={period.id} style={{ marginBottom: pi < periods.length - 1 ? 16 : 0 }}>
+                      <div style={{ borderLeft:'3px solid var(--accent)', paddingLeft:10, marginBottom:8, paddingTop:4, paddingBottom:4 }}>
+                        <p style={{ fontSize:12, fontWeight:600, color:'var(--text)', lineHeight:1.5 }}>{periodLabel(period)}</p>
+                      </div>
+                      {period.carryForwardAmount > 0 && (
+                        <div style={{ paddingLeft:13, marginBottom:6 }}>
+                          <span style={{ fontSize:12, color:'var(--amber-text)', fontStyle:'italic' }}>
+                            Carried forward: {formatINR(period.carryForwardAmount)}
+                          </span>
+                        </div>
+                      )}
+                      {pps.length === 0 ? (
+                        <p style={{ fontSize:12, color:'var(--text-3)', paddingLeft:13 }}>No payments in this period.</p>
+                      ) : (
+                        pps.map(p => (
+                          <div key={p.id} style={{ display:'flex', alignItems:'center', gap:6, paddingLeft:13, marginBottom:4 }}>
+                            <span style={{ fontSize:13, fontWeight:600, color:'var(--teal)' }}>{formatINR(p.amount)}</span>
+                            <span style={{ fontSize:12, color:'var(--text-3)' }}>on {p.date}</span>
+                            <span style={{ fontSize:12, color:'var(--teal)' }}>✓</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })()}
 
           {/* Attendance card */}
           <div className="card">
@@ -743,6 +845,20 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit, 
   const [reportData, setReportData] = useState(null)
   const [attendanceRecords, setAttendanceRecords] = useState([])
   const [saving, setSaving]         = useState(false)
+  const [newPeriodStart, setNewPeriodStart] = useState(formatDMY(new Date()))
+  const [carryForwardChoice, setCarryForwardChoice] = useState(null) // null | 'carry' | 'writeoff'
+
+  // Compute outstanding balance from current period when entering change-billing view
+  const outstanding = (() => {
+    const isClasses  = client.cycleType === 'classes'
+    const isSessions = client.billingType === 'per_session'
+    if (isClasses && isSessions) {
+      const totalPaid     = (client.balance ?? 0) + (client.classesPerCycle ?? 0) * (client.sessionRate ?? 0)
+      const attendedValue = (client.attendedThisCycle ?? 0) * (client.sessionRate ?? 0)
+      return Math.max(0, attendedValue - totalPaid)
+    }
+    return Math.max(0, -(client.balance ?? 0))
+  })()
 
   const loadReport = async () => {
     const [prs, attrs, measures, attendance] = await Promise.all([
@@ -926,10 +1042,170 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit, 
                 monthlyFee: newFee,
                 sessionRate: billingType === 'per_session' ? (Number(sessionRate) || null) : null,
               })
-              await recomputeClientPaymentFields(client.id, newFee || 0)
+              await recomputeClientPaymentFields(client.id, newFee || 0, client.billingStartDate || client.startDate, client.carryForwardAmount ?? 0)
               setSaving(false)
             }}>
             {saving ? 'Saving…' : 'Save changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+
+  if (view === 'change-billing') return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-handle" />
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
+          <button className="btn btn-ghost btn-icon" onClick={() => setView('menu')}><BackIcon /></button>
+          <p style={{ fontWeight:700, fontSize:16 }}>Change billing — {client.name}</p>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Cycle type</label>
+          <div style={{ display:'flex', gap:8 }}>
+            {[['time','Time-based (28 days)'],['classes','Classes-based']].map(([val, lbl]) => (
+              <button key={val} type="button" onClick={() => setCycleType(val)}
+                style={{ flex:1, padding:'9px 0', borderRadius:'var(--r-sm)', fontSize:13, fontWeight:600, cursor:'pointer', border:'1.5px solid',
+                  background: cycleType === val ? 'var(--accent)' : 'transparent',
+                  color:      cycleType === val ? '#fff' : 'var(--text-2)',
+                  borderColor: cycleType === val ? 'var(--accent)' : 'var(--border-mid)' }}>
+                {lbl}
+              </button>
+            ))}
+          </div>
+        </div>
+        {cycleType === 'time' ? (
+          <div className="form-group">
+            <label className="form-label">Membership</label>
+            <div style={{ display:'flex', gap:8 }}>
+              {[3, 4, 5].map(n => (
+                <button key={n} type="button" onClick={() => setMembership(n)}
+                  style={{ flex:1, padding:'9px 0', borderRadius:'var(--r-sm)', fontSize:14, fontWeight:600, cursor:'pointer', border:'1.5px solid',
+                    background: membershipType === n ? 'var(--accent)' : 'transparent',
+                    color:      membershipType === n ? '#fff' : 'var(--text-2)',
+                    borderColor: membershipType === n ? 'var(--accent)' : 'var(--border-mid)' }}>
+                  {n}×/wk
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="form-group">
+            <label className="form-label">Classes per cycle</label>
+            <input className="form-input" type="text" inputMode="numeric" placeholder="e.g. 10"
+              value={classesPerCycle} onChange={e => setClassesPerCycle(e.target.value)} />
+          </div>
+        )}
+        <div className="form-group">
+          <label className="form-label">Billing type</label>
+          <div style={{ display:'flex', gap:8 }}>
+            {[['monthly','Monthly fee'],['per_session','Per session']].map(([val, lbl]) => (
+              <button key={val} type="button" onClick={() => setBillingType(val)}
+                style={{ flex:1, padding:'9px 0', borderRadius:'var(--r-sm)', fontSize:13, fontWeight:600, cursor:'pointer', border:'1.5px solid',
+                  background: billingType === val ? 'var(--accent)' : 'transparent',
+                  color:      billingType === val ? '#fff' : 'var(--text-2)',
+                  borderColor: billingType === val ? 'var(--accent)' : 'var(--border-mid)' }}>
+                {lbl}
+              </button>
+            ))}
+          </div>
+        </div>
+        {billingType === 'monthly' && (
+          <div className="form-group">
+            <label className="form-label">Monthly fee (₹)</label>
+            <input className="form-input" type="text" inputMode="numeric" placeholder="e.g. 5000"
+              value={monthlyFee} onChange={e => setMonthlyFee(e.target.value)} />
+          </div>
+        )}
+        {billingType === 'per_session' && (
+          <div className="form-group">
+            <label className="form-label">Session rate (₹)</label>
+            <input className="form-input" type="text" inputMode="numeric" placeholder="e.g. 1500"
+              value={sessionRate} onChange={e => setSessionRate(e.target.value)} />
+          </div>
+        )}
+        <div className="form-group">
+          <label className="form-label">New period starts on</label>
+          <DatePickerInput value={newPeriodStart} onChange={setNewPeriodStart} />
+        </div>
+
+        {/* Outstanding balance warning — shown when current period has unpaid balance */}
+        {outstanding > 0 && (
+          <div style={{ background:'var(--amber-light)', border:'1px solid #FAC775', borderRadius:'var(--r-sm)', padding:'12px 14px', marginTop:4 }}>
+            <p style={{ fontSize:13, fontWeight:600, color:'var(--amber-text)', marginBottom:6 }}>
+              {formatINR(outstanding)} outstanding from current period
+            </p>
+            <p style={{ fontSize:12, color:'var(--amber-text)', marginBottom:10, lineHeight:1.5 }}>
+              {client.cycleType === 'classes'
+                ? `${client.attendedThisCycle ?? 0} of ${client.classesPerCycle ?? 0} classes attended this cycle. Changing billing will reset the session counter. Settle the outstanding balance or carry it forward.`
+                : `Closing this period early does not issue an automatic refund or credit.`}
+            </p>
+            <div style={{ display:'flex', gap:8 }}>
+              <button type="button"
+                style={{ flex:1, padding:'8px 0', borderRadius:'var(--r-sm)', fontSize:13, fontWeight:600, cursor:'pointer', border:'1.5px solid',
+                  background: carryForwardChoice === 'carry' ? 'var(--accent)' : 'transparent',
+                  color:      carryForwardChoice === 'carry' ? '#fff' : 'var(--amber-text)',
+                  borderColor: carryForwardChoice === 'carry' ? 'var(--accent)' : '#FAC775' }}
+                onClick={() => setCarryForwardChoice('carry')}>
+                Carry forward
+              </button>
+              <button type="button"
+                style={{ flex:1, padding:'8px 0', borderRadius:'var(--r-sm)', fontSize:13, fontWeight:600, cursor:'pointer', border:'1.5px solid',
+                  background: carryForwardChoice === 'writeoff' ? 'var(--coral)' : 'transparent',
+                  color:      carryForwardChoice === 'writeoff' ? '#fff' : 'var(--coral)',
+                  borderColor: carryForwardChoice === 'writeoff' ? 'var(--coral)' : 'var(--coral)' }}
+                onClick={() => setCarryForwardChoice(c => c === 'writeoff' ? null : 'writeoff')}>
+                {carryForwardChoice === 'writeoff' ? '✓ Write off — confirm' : 'Write off'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div style={{ display:'flex', gap:10, marginTop:8 }}>
+          <button className="btn btn-outline btn-full" onClick={() => setView('menu')}>Back</button>
+          <button className="btn btn-primary btn-full"
+            disabled={saving || (outstanding > 0 && carryForwardChoice === null)}
+            onClick={async () => {
+              setSaving(true)
+              const newCycleType   = cycleType
+              const newMembership  = newCycleType === 'time' ? membershipType : null
+              const newClasses     = newCycleType === 'classes' ? (Number(classesPerCycle) || 10) : null
+              const newBillingType = billingType
+              const newMonthlyFee  = newBillingType === 'monthly' ? (Number(monthlyFee) || null) : null
+              const newSessionRate = newBillingType === 'per_session' ? (Number(sessionRate) || null) : null
+              const newCycleFee    = newBillingType === 'per_session' && newClasses
+                ? newClasses * (newSessionRate || 0)
+                : (newMonthlyFee || 0)
+              const carryAmt = carryForwardChoice === 'carry' ? outstanding : 0
+              const periods  = await getBillingPeriods(client.id)
+              const active   = periods.find(p => !p.endDate)
+              if (active) await closeBillingPeriod(client.id, active.id, newPeriodStart)
+              await addBillingPeriod(client.id, {
+                startDate: newPeriodStart, endDate: null,
+                cycleType: newCycleType, membershipType: newMembership,
+                classesPerCycle: newClasses, billingType: newBillingType,
+                monthlyFee: newMonthlyFee, sessionRate: newSessionRate,
+                carryForwardAmount: carryAmt, label: null,
+              })
+              await onEdit({
+                cycleType: newCycleType, membershipType: newMembership,
+                classesPerCycle: newClasses, billingType: newBillingType,
+                monthlyFee: newMonthlyFee, sessionRate: newSessionRate,
+                billingStartDate: newPeriodStart,
+                ...(newCycleType === 'classes' ? {
+                  currentCycleStartDate: newPeriodStart,
+                  currentCycleIndex: 0,
+                  attendedThisCycle: 0,
+                } : {
+                  currentCycleStartDate: null,
+                  currentCycleIndex: null,
+                  attendedThisCycle: null,
+                }),
+              })
+              await recomputeClientPaymentFields(client.id, newCycleFee, newPeriodStart, carryAmt)
+              setSaving(false)
+            }}>
+            {saving ? 'Saving…' : 'Save & start new period'}
           </button>
         </div>
       </div>
@@ -1029,6 +1305,9 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit, 
           </button>
           <button className="btn btn-outline btn-full" onClick={() => setView('edit')}>
             <EditIcon /> Edit profile
+          </button>
+          <button className="btn btn-outline btn-full" onClick={() => setView('change-billing')}>
+            <BillingIcon /> Change billing
           </button>
           <button className="btn btn-outline btn-full" onClick={() => setView('thresholds')}>
             <SlidersIcon /> Evaluation settings
@@ -1249,13 +1528,21 @@ function PaymentModal({ client: initialClient, onClose, onClientUpdated }) {
         )}
 
         {/* Balance — only show when non-zero (zero on a fresh client means no payments yet) */}
-        {client.balance != null && client.balance !== 0 && (
-          <div style={{ textAlign:'center', marginBottom:18 }}>
-            <p style={{ fontSize:14, fontWeight:600, color: client.balance >= 0 ? 'var(--teal)' : 'var(--coral)' }}>
-              Balance: {client.balance > 0 ? `+${formatINR(client.balance)}` : `−${formatINR(Math.abs(client.balance))}`}
-            </p>
-          </div>
-        )}
+        {(() => {
+          const isClassesPay = client.cycleType === 'classes'
+          const isSessionsPay = client.billingType === 'per_session'
+          const db = isClassesPay && isSessionsPay && client.balance != null
+            ? (client.balance ?? 0) + ((client.classesPerCycle ?? 0) - (client.attendedThisCycle ?? 0)) * (client.sessionRate ?? 0)
+            : (client.balance ?? null)
+          if (db == null || db === 0) return null
+          return (
+            <div style={{ textAlign:'center', marginBottom:18 }}>
+              <p style={{ fontSize:14, fontWeight:600, color: db >= 0 ? 'var(--teal)' : 'var(--coral)' }}>
+                {db > 0 ? `+${formatINR(db)}` : `−${formatINR(Math.abs(db))}`}
+              </p>
+            </div>
+          )
+        })()}
 
         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
           <button className="btn btn-primary btn-full" onClick={() => setView('pay')}>
@@ -1278,10 +1565,15 @@ function PayView({ client, onBack, onClose, onSaved }) {
   const fullFee = isClasses && isSessions
     ? (client.classesPerCycle || 1) * (client.sessionRate || 0)
     : (client.monthlyFee || 0)
-  const existingBalance = client.balance ?? 0
-  const defaultAmount = existingBalance < 0
-    ? String(Math.abs(existingBalance))   // partial payment made — default to pending amount
-    : String(fullFee || '')               // no payment or fully paid — default to full fee
+  const rawBalance = client.balance ?? 0
+  // For per-session classes, default to what's actually owed now (attended × rate − paid),
+  // not the full cycle fee which inflates the suggested amount.
+  const displayBalance = isClasses && isSessions
+    ? rawBalance + ((client.classesPerCycle ?? 0) - (client.attendedThisCycle ?? 0)) * (client.sessionRate ?? 0)
+    : rawBalance
+  const defaultAmount = displayBalance < 0
+    ? String(Math.abs(displayBalance))
+    : String(isClasses && isSessions ? (client.sessionRate || '') : (fullFee || ''))
 
   const [sessions, setSessions]     = useState('')
   const [amount, setAmount]         = useState(defaultAmount)
@@ -1317,7 +1609,7 @@ function PayView({ client, onBack, onClose, onSaved }) {
     const cycleFee = isClasses && isSessions
       ? (client.classesPerCycle || 1) * (client.sessionRate || 0)
       : (client.monthlyFee || 0)
-    await recomputeClientPaymentFields(client.id, cycleFee)
+    await recomputeClientPaymentFields(client.id, cycleFee, client.billingStartDate || client.startDate, client.carryForwardAmount ?? 0)
     await onSaved()
     setSaving(false)
   }
@@ -1397,7 +1689,12 @@ function HistoryView({ client, onBack, onClose, onChanged }) {
     if (!window.confirm(`Delete payment of ${formatINR(p.amount)} on ${p.date}?`)) return
     setDeleting(p.id)
     await deletePayment(client.id, p.id)
-    await recomputeClientPaymentFields(client.id, client.monthlyFee || 0)
+    const isClasses  = client.cycleType === 'classes'
+    const isSessions = client.billingType === 'per_session'
+    const cycleFee   = isClasses && isSessions
+      ? (client.classesPerCycle || 1) * (client.sessionRate || 0)
+      : (client.monthlyFee || 0)
+    await recomputeClientPaymentFields(client.id, cycleFee, client.billingStartDate || client.startDate, client.carryForwardAmount ?? 0)
     setPayments(ps => ps.filter(x => x.id !== p.id))
     setDeleting(null)
     onChanged()
@@ -1525,6 +1822,7 @@ const AlertIcon   = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="
 const EditIcon    = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
 const ChartIcon   = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>
 const SlidersIcon = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+const BillingIcon = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
 const PauseIcon   = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
 const PlayIcon    = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
 const ArchiveIcon = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
