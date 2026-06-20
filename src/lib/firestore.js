@@ -42,6 +42,27 @@ export const deletePR = (clientId, prId) =>
 export const updatePR = (clientId, prId, data) =>
   updateDoc(doc(db, 'clients', clientId, 'prs', prId), data)
 
+// Rewrite all PR docs referencing oldEx across every client to point to targetEx,
+// then delete the custom exercise document.
+export const mergeExercise = async (oldEx, targetEx, clients) => {
+  for (const client of clients) {
+    const prs = await getPRs(client.id)
+    const toUpdate = prs.filter(p => p.exerciseId === oldEx.id || p.exerciseName === oldEx.name)
+    if (toUpdate.length === 0) continue
+    const batch = writeBatch(db)
+    toUpdate.forEach(p =>
+      batch.update(doc(db, 'clients', client.id, 'prs', p.id), {
+        exerciseId:   targetEx.id,
+        exerciseName: targetEx.name,
+        type:         targetEx.type,
+        unit:         targetEx.unit,
+      })
+    )
+    await batch.commit()
+  }
+  await deleteDoc(doc(db, 'customExercises', oldEx.id))
+}
+
 // ── Attributes ────────────────────────────────────────────────────────────────
 export const getAttributes = (clientId) =>
   getDocs(query(collection(db, 'clients', clientId, 'attributes'), orderBy('date', 'desc')))
@@ -156,10 +177,13 @@ export const startNextCycle = async (clientId, client, newStartDate) => {
 // ── Custom exercises ──────────────────────────────────────────────────────────
 export const getCustomExercises = () =>
   getDocs(collection(db, 'customExercises'))
-    .then(s => s.docs.map(d => ({ id: d.id, ...d.data() })))
+    .then(s => s.docs.map(d => ({ ...d.data(), id: d.id })))
 
 export const addCustomExercise = (data) =>
   addDoc(collection(db, 'customExercises'), data)
+
+export const updateCustomExercise = (id, data) =>
+  updateDoc(doc(db, 'customExercises', id), data)
 
 export const deleteCustomExercise = (id) =>
   deleteDoc(doc(db, 'customExercises', id))
