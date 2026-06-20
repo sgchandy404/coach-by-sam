@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getClients, getAttendance, markAttended, unmarkAttended, updateAttendanceExercises } from '../lib/firestore.js'
+import { getClients, getAttendance, markAttended, unmarkAttended, updateAttendanceExercises, recomputeClassCycleFields } from '../lib/firestore.js'
 import { DEFAULT_EXERCISES } from '../data/exercises.js'
 import { getInitials, avatarColor, parseDMY, formatDMY, getMonthWindow, getClassCycleInfo } from '../lib/utils.js'
 import PageLoader from '../components/PageLoader.jsx'
@@ -61,6 +61,7 @@ export default function AttendancePage() {
 
   const toggleAttendance = async (clientId, dateStr) => {
     const isAttended = attendanceMap[dateStr]?.has(clientId)
+    const client = clients.find(c => c.id === clientId)
     if (isAttended) {
       await unmarkAttended(clientId, dateStr)
       setAttendanceMap(prev => {
@@ -86,6 +87,9 @@ export default function AttendancePage() {
         ...prev,
         [clientId]: [...(prev[clientId] || []), { date: dateStr, exercises: [] }]
       }))
+    }
+    if (client?.cycleType === 'classes') {
+      await recomputeClassCycleFields(clientId, client)
     }
   }
 
@@ -162,7 +166,7 @@ export default function AttendancePage() {
 
       {/* Cycle attendance summary */}
       {!loading && clients.filter(c => c.status === 'active').length > 0 && (
-        <CycleAttendanceSummary clients={clients} clientRecordsMap={clientRecordsMap} />
+        <CycleAttendanceSummary clients={clients} clientRecordsMap={clientRecordsMap} viewDate={viewDate} />
       )}
 
       {selectedDay && (
@@ -466,9 +470,11 @@ function ExerciseLogModal({ client, dateStr, allRecords, onUpdate, onClose }) {
 }
 
 // ── Cycle attendance summary (below calendar) ─────────────────────────────────
-function CycleAttendanceSummary({ clients, clientRecordsMap }) {
-  const today    = new Date()
-  const todayStr = formatDMY(today)
+function CycleAttendanceSummary({ clients, clientRecordsMap, viewDate }) {
+  // Use the 15th of the viewed month as the cycle reference so stats reflect
+  // whichever billing cycle falls within the calendar month being displayed.
+  const refDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), 15)
+  const refStr  = formatDMY(refDate)
 
   const activeClients = clients.filter(c => c.status === 'active')
 
@@ -481,7 +487,7 @@ function CycleAttendanceSummary({ clients, clientRecordsMap }) {
       expected = c.classesPerCycle || 10
     } else {
       const startRef = c.billingStartDate || c.startDate
-      const cycleWin = startRef ? getMonthWindow(startRef, todayStr) : null
+      const cycleWin = startRef ? getMonthWindow(startRef, refStr) : null
       attended = cycleWin
         ? records.filter(r => { const d = parseDMY(r.date); return d && d >= cycleWin.windowStart && d <= cycleWin.windowEnd }).length
         : 0

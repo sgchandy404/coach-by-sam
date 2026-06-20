@@ -104,11 +104,15 @@ export const getCycleWindow = (startDateStr, targetDateStr) => {
 export const getPaymentStatus = (client) => {
   // Classes-based: use cycle index to determine if current cycle is paid
   if (client.cycleType === 'classes') {
-    const currentIndex  = client.currentCycleIndex ?? 0
+    const currentIndex  = client.currentCycleStartDate ? (client.currentCycleIndex ?? 0) : 0
     const lastPaidIndex = client.lastPaidCycleIndex ?? -1
-    if (lastPaidIndex >= currentIndex) return 'paid'
-    const balance = client.balance ?? 0
-    if (balance > 0) return 'partial'
+    const balance       = client.balance ?? 0
+    const carryForward  = client.carryForwardAmount ?? 0
+    const cyclePaid     = lastPaidIndex >= currentIndex
+    // carryForward is folded into effectiveFee, so balance >= 0 means fully settled
+    const carrySettled  = carryForward === 0 || balance >= 0
+    if (cyclePaid && carrySettled) return 'paid'
+    if (cyclePaid || carryForward > 0) return 'partial'
     return 'unpaid'
   }
 
