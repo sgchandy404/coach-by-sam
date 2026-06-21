@@ -33,10 +33,13 @@ Coach by Sam is a mobile-first Progressive Web App built for a personal fitness 
 | Module | What it does |
 |--------|-------------|
 | **Clients** | Active / paused / deactivated lifecycle, smart reactivation with start-date reset, original join date preserved |
-| **PR Log** | Personal records per exercise (weight, time, reps), custom exercise support, weekly/monthly cadence |
+| **Billing** | Two cycle types — 28-day time-based and classes-based (N sessions per cycle); monthly or per-session billing; mid-cycle billing change with carry-forward or write-off of outstanding balance; full billing history per client |
+| **Payments** | Record payments against any cycle; balance and payment status auto-computed; partial payment support; payment history with per-billing-period grouping |
+| **PR Log** | Personal records per exercise (weight, time, reps), custom exercise support, edit and delete recorded PRs |
 | **Attributes** | Fitness qualities (mobility, stamina, flexibility, etc.) scored 1–10 per session |
 | **Measurements** | Body measurements over time with delta indicators between sessions |
 | **Attendance** | Global calendar view, per-day class toggling across all clients, 28-day billing cycles anchored to each client's start date |
+| **Revenue** | Monthly revenue dashboard — expected vs collected vs outstanding across all active clients, per-client payment history, month navigation |
 | **Rankings** | Automated evaluation across four dimensions with separate coach/client label modes and a shareable progress card |
 | **Progress Report** | Radar chart, PR trend lines, weight trend — accessible from each client's manage modal |
 | **Settings** | Seed 10 dummy clients for demo, flush dummy data, flush all data |
@@ -86,13 +89,43 @@ The reactivation flow was designed deliberately: rather than silently resetting 
 
 ---
 
+### Billing cycles — time-based and classes-based
+
+Two cycle models are supported:
+
+- **Time-based (`cycleType: 'time'`)** — 28-day rolling cycles anchored to `billingStartDate`. Expected classes per cycle = `membershipType × 4`. Used for clients on a regular weekly schedule.
+- **Classes-based (`cycleType: 'classes'`)** — a cycle ends after N sessions (`classesPerCycle`), not after a fixed number of days. The coach manually advances to the next cycle via "Start next cycle". Used for block-booking clients.
+
+Both types support **monthly** or **per-session** billing. Payment status is a 4-state value: `paid` · `partial` · `overdue` · `unpaid`.
+
+---
+
+### Billing history — period timeline per client
+
+Every client has a `billingPeriods` subcollection. A new period is created automatically when a client is added, and a new one is opened (closing the previous) when the coach uses "Change billing". Payments are mapped to periods at render time by date range — no extra field is written to payment documents.
+
+Existing clients without a `billingPeriods` subcollection fall back to a synthetic period derived from their current client doc fields, so there are no migration requirements.
+
+---
+
+### Mid-cycle billing change — carry-forward
+
+When a billing change happens mid-cycle, any outstanding balance is surfaced to the coach with two options:
+
+- **Write off** — the outstanding amount is forgiven; the new period starts clean
+- **Carry forward** — the outstanding amount is folded into the new period's effective fee, draining passively as payments accumulate
+
+`carryForwardAmount` is stored on the client doc and folded into `effectiveFee` in the payment recompute function. It is not auto-cleared when balance reaches zero — the per-session `displayBalance` formula depends on it persisting until the next billing change.
+
+---
+
 ### Attendance cycles — anchored to client start date, not calendar month
 
-Attendance expected counts and billing cycles are calculated on **28-day rolling windows anchored to each client's individual start date**, not calendar months.
+Attendance expected counts are calculated on **28-day rolling windows anchored to each client's individual start date**, not calendar months.
 
 The problem with calendar months: a client who joins on the 20th and attends every class will show up as dramatically under-attended for most of that first month because the expected count is calculated against the full month. This makes the coach's dashboard misleading and the client's progress report discouraging.
 
-With start-date anchoring, month 1 starts on day 1 for every client regardless of when in the calendar year they joined. Expected classes per cycle = `membershipType × 4`. The `getMonthWindow()` utility in `src/lib/utils.js` handles the arithmetic — given a client's start date and any target date, it returns the exact start and end of the 28-day cycle containing that date.
+With start-date anchoring, month 1 starts on day 1 for every client regardless of when in the calendar year they joined. The `getMonthWindow()` utility in `src/lib/utils.js` handles the arithmetic — given a client's start date and any target date, it returns the exact start and end of the 28-day cycle containing that date.
 
 ---
 
@@ -204,14 +237,15 @@ src/
 │   ├── evaluate.js          # Pure evaluation engine — no Firebase dependency
 │   ├── firebase.js          # Firebase init — reads from env vars
 │   ├── firestore.js         # All Firestore read/write helpers
-│   └── utils.js             # Date helpers, avatar colours, getMonthWindow
+│   └── utils.js             # Date helpers, avatar colours, cycle utilities
 ├── pages/
 │   ├── AttendancePage.jsx
 │   ├── AttributesPage.jsx
-│   ├── ClientsPage.jsx      # Client list + full manage modal
+│   ├── ClientsPage.jsx      # Client list + full manage modal (billing, payments)
 │   ├── MeasurementsPage.jsx
 │   ├── PRLogPage.jsx
 │   ├── RankingsPage.jsx     # Evaluation overview + client detail + share card
+│   ├── RevenuePage.jsx      # Monthly revenue dashboard
 │   └── SettingsPage.jsx
 ├── App.jsx                  # Auth gate, tab state, iOS sign-in handling
 ├── index.css                # Global styles and CSS design tokens
@@ -223,7 +257,7 @@ src/
 ## Known limitations & deliberate scope
 
 - **Single-coach only** — Firestore rules are locked to one Google UID by design. Multi-tenancy would require a full auth model redesign.
-- **No payment processing** — payment status (paid/unpaid) is tracked as a manual flag only. No Stripe, no invoicing.
+- **No payment processing** — payment amounts are recorded manually. No Stripe, no invoicing.
 - **No offline support** — the app requires a network connection. Firestore's offline cache provides some resilience but it's not a deliberate offline-first design.
 - **Evaluation windows are always relative to today** — there are no historical snapshots; re-evaluating past periods would require a different data model.
 - **Mobile-first, not desktop-optimised** — the layout is capped at 480px and designed for one-handed phone use.

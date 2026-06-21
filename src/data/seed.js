@@ -10,7 +10,9 @@ export const DUMMY_CLIENTS = [
       goalType: 'weight_loss',
       dob: '1990-04-12', notes: 'Lower back history — avoid heavy deadlifts initially',
       paymentStatus: 'paid', status: 'active', isDummy: true,
-      membershipType: 3, startDate: '05-01-2026',
+      membershipType: 3, startDate: '05-01-2026', monthlyFee: 3000,
+      cycleType: 'time', billingType: 'monthly', billingStartDate: '05-01-2026',
+      balance: 0, lastPaidCycleStart: null, lastPaidCycleEnd: null,
     },
     prs: [
       { exerciseId: 'back-squat',   exerciseName: 'Back squat',   value: 50,  type: 'weight', unit: 'kg',   period: 'monthly', date: '2024-11-01', notes: 'First baseline' },
@@ -38,6 +40,11 @@ export const DUMMY_CLIENTS = [
       { date: '18-05-2026' }, { date: '20-05-2026' }, { date: '22-05-2026' },
       { date: '25-05-2026' }, { date: '27-05-2026' }, { date: '29-05-2026' },
     ],
+    payments: [
+      { amount: 3000, date: '05-03-2026', cycleStart: '05-03-2026', cycleEnd: '01-04-2026' },
+      { amount: 3000, date: '02-04-2026', cycleStart: '02-04-2026', cycleEnd: '29-04-2026' },
+      { amount: 3000, date: '30-04-2026', cycleStart: '30-04-2026', cycleEnd: '27-05-2026' },
+    ],
   },
   {
     client: {
@@ -45,7 +52,9 @@ export const DUMMY_CLIENTS = [
       goalType: 'athletic',
       dob: '1988-09-23', notes: 'Runs 4x per week, needs strength supplementation',
       paymentStatus: 'unpaid', status: 'active', isDummy: true,
-      membershipType: 4, startDate: '12-01-2026',
+      membershipType: 4, startDate: '12-01-2026', monthlyFee: 4000,
+      cycleType: 'time', billingType: 'monthly', billingStartDate: '12-01-2026',
+      balance: 0, lastPaidCycleStart: null, lastPaidCycleEnd: null,
     },
     prs: [
       { exerciseId: 'run-5k',  exerciseName: '5 km run',  value: 1320, type: 'time', unit: 'sec', period: 'weekly', date: '2024-10-05', notes: '22 min' },
@@ -71,6 +80,10 @@ export const DUMMY_CLIENTS = [
       { date: '18-05-2026' }, { date: '19-05-2026' }, { date: '21-05-2026' }, { date: '22-05-2026' },
       { date: '25-05-2026' }, { date: '26-05-2026' }, { date: '28-05-2026' }, { date: '29-05-2026' },
     ],
+    payments: [
+      { amount: 4000, date: '12-03-2026', cycleStart: '12-03-2026', cycleEnd: '08-04-2026' },
+      { amount: 4000, date: '09-04-2026', cycleStart: '09-04-2026', cycleEnd: '06-05-2026' },
+    ],
   },
   {
     client: {
@@ -78,7 +91,9 @@ export const DUMMY_CLIENTS = [
       goalType: 'general',
       dob: '1995-02-14', notes: 'Prefers morning sessions, no equipment at home',
       paymentStatus: 'paid', status: 'active', isDummy: true,
-      membershipType: 3, startDate: '19-01-2026',
+      membershipType: 3, startDate: '19-01-2026', monthlyFee: 3000,
+      cycleType: 'time', billingType: 'monthly', billingStartDate: '19-01-2026',
+      balance: 0, lastPaidCycleStart: null, lastPaidCycleEnd: null,
     },
     prs: [
       { exerciseId: 'push-ups', exerciseName: 'Push-ups',   value: 12, type: 'reps', unit: 'reps', period: 'weekly', date: '2024-12-01', notes: '' },
@@ -106,6 +121,11 @@ export const DUMMY_CLIENTS = [
       { date: '18-05-2026' }, { date: '20-05-2026' }, { date: '22-05-2026' },
       { date: '25-05-2026' }, { date: '27-05-2026' }, { date: '29-05-2026' },
     ],
+    payments: [
+      { amount: 3000, date: '16-03-2026', cycleStart: '16-03-2026', cycleEnd: '12-04-2026' },
+      { amount: 3000, date: '13-04-2026', cycleStart: '13-04-2026', cycleEnd: '10-05-2026' },
+      { amount: 3000, date: '11-05-2026', cycleStart: '11-05-2026', cycleEnd: '07-06-2026' },
+    ],
   },
   {
     client: {
@@ -113,7 +133,9 @@ export const DUMMY_CLIENTS = [
       goalType: 'muscle_gain',
       dob: '1992-07-30', notes: 'Competes at regional level. Responds well to high volume.',
       paymentStatus: 'paid', status: 'active', isDummy: true,
-      membershipType: 5, startDate: '05-01-2026',
+      membershipType: 5, startDate: '05-01-2026', monthlyFee: 5000,
+      cycleType: 'time', billingType: 'monthly', billingStartDate: '05-01-2026',
+      balance: 0, lastPaidCycleStart: null, lastPaidCycleEnd: null,
     },
     prs: [
       { exerciseId: 'back-squat',  exerciseName: 'Back squat',   value: 100, type: 'weight', unit: 'kg', period: 'monthly', date: '2024-10-01', notes: '' },
@@ -139,6 +161,11 @@ export const DUMMY_CLIENTS = [
       { date: '18-05-2026' }, { date: '19-05-2026' }, { date: '20-05-2026' }, { date: '21-05-2026' }, { date: '22-05-2026' },
       { date: '25-05-2026' }, { date: '26-05-2026' }, { date: '27-05-2026' }, { date: '28-05-2026' },
     ],
+    payments: [
+      { amount: 5000, date: '05-03-2026', cycleStart: '05-03-2026', cycleEnd: '01-04-2026' },
+      { amount: 5000, date: '02-04-2026', cycleStart: '02-04-2026', cycleEnd: '29-04-2026' },
+      { amount: 5000, date: '30-04-2026', cycleStart: '30-04-2026', cycleEnd: '27-05-2026' },
+    ],
   },
   {
     client: {
@@ -146,7 +173,9 @@ export const DUMMY_CLIENTS = [
       goalType: 'rehabilitation',
       dob: '1991-11-05', notes: 'Cleared by physio. Slow progressive loading only.',
       paymentStatus: 'paid', status: 'active', isDummy: true,
-      membershipType: 3, startDate: '26-01-2026',
+      membershipType: 3, startDate: '26-01-2026', monthlyFee: 3500,
+      cycleType: 'time', billingType: 'monthly', billingStartDate: '26-01-2026',
+      balance: 0, lastPaidCycleStart: null, lastPaidCycleEnd: null,
     },
     prs: [
       { exerciseId: 'plank',       exerciseName: 'Plank hold',        value: 20,  type: 'time',   unit: 'sec', period: 'weekly', date: '2025-01-10', notes: 'Starting point' },
@@ -172,6 +201,11 @@ export const DUMMY_CLIENTS = [
       { date: '25-05-2026' },
       { date: '29-05-2026' },
     ],
+    payments: [
+      { amount: 3000, date: '23-03-2026', cycleStart: '23-03-2026', cycleEnd: '19-04-2026' },
+      { amount: 3000, date: '20-04-2026', cycleStart: '20-04-2026', cycleEnd: '17-05-2026' },
+      { amount: 3000, date: '18-05-2026', cycleStart: '18-05-2026', cycleEnd: '14-06-2026' },
+    ],
   },
   {
     client: {
@@ -179,7 +213,9 @@ export const DUMMY_CLIENTS = [
       goalType: 'weight_loss',
       dob: '1985-03-18', notes: 'Desk job, sedentary background. Motivated but beginner level.',
       paymentStatus: 'unpaid', status: 'active', isDummy: true,
-      membershipType: 3, startDate: '05-01-2026',
+      membershipType: 3, startDate: '05-01-2026', monthlyFee: 3000,
+      cycleType: 'time', billingType: 'monthly', billingStartDate: '05-01-2026',
+      balance: 0, lastPaidCycleStart: null, lastPaidCycleEnd: null,
     },
     prs: [
       { exerciseId: 'run-1k',  exerciseName: '1 km run',  value: 480, type: 'time', unit: 'sec', period: 'weekly', date: '2025-01-05', notes: '8 min — first attempt' },
@@ -204,6 +240,10 @@ export const DUMMY_CLIENTS = [
       { date: '18-05-2026' }, { date: '20-05-2026' }, { date: '22-05-2026' },
       { date: '25-05-2026' }, { date: '27-05-2026' }, { date: '29-05-2026' },
     ],
+    payments: [
+      { amount: 3000, date: '05-03-2026', cycleStart: '05-03-2026', cycleEnd: '01-04-2026' },
+      { amount: 3000, date: '02-04-2026', cycleStart: '02-04-2026', cycleEnd: '29-04-2026' },
+    ],
   },
   {
     client: {
@@ -211,7 +251,9 @@ export const DUMMY_CLIENTS = [
       goalType: 'rehabilitation',
       dob: '1997-06-22', notes: 'Former dancer. Wants to maintain mobility, add functional strength.',
       paymentStatus: 'paid', status: 'paused', isDummy: true,
-      membershipType: 3, startDate: '09-02-2026',
+      membershipType: 3, startDate: '09-02-2026', monthlyFee: 3000,
+      cycleType: 'time', billingType: 'monthly', billingStartDate: '09-02-2026',
+      balance: 0, lastPaidCycleStart: null, lastPaidCycleEnd: null,
     },
     prs: [
       { exerciseId: 'plank',     exerciseName: 'Plank hold',    value: 120, type: 'time',   unit: 'sec', period: 'monthly', date: '2024-09-01', notes: '' },
@@ -231,6 +273,9 @@ export const DUMMY_CLIENTS = [
     attendance: [
       { date: '13-04-2026' }, { date: '15-04-2026' }, { date: '17-04-2026' },
     ],
+    payments: [
+      { amount: 3000, date: '09-03-2026', cycleStart: '09-03-2026', cycleEnd: '05-04-2026' },
+    ],
   },
   {
     client: {
@@ -238,7 +283,9 @@ export const DUMMY_CLIENTS = [
       goalType: 'recomposition',
       dob: '1993-08-11', notes: 'Goal date: July 2025. Focus on toning and posture.',
       paymentStatus: 'paid', status: 'active', isDummy: true,
-      membershipType: 4, startDate: '02-02-2026',
+      membershipType: 4, startDate: '02-02-2026', monthlyFee: 4000,
+      cycleType: 'time', billingType: 'monthly', billingStartDate: '02-02-2026',
+      balance: 0, lastPaidCycleStart: null, lastPaidCycleEnd: null,
     },
     prs: [
       { exerciseId: 'overhead-press', exerciseName: 'Overhead press', value: 25, type: 'weight', unit: 'kg', period: 'weekly', date: '2025-02-01', notes: '' },
@@ -264,6 +311,11 @@ export const DUMMY_CLIENTS = [
       { date: '18-05-2026' }, { date: '19-05-2026' }, { date: '21-05-2026' }, { date: '22-05-2026' },
       { date: '25-05-2026' }, { date: '26-05-2026' }, { date: '28-05-2026' }, { date: '29-05-2026' },
     ],
+    payments: [
+      { amount: 4000, date: '02-03-2026', cycleStart: '02-03-2026', cycleEnd: '29-03-2026' },
+      { amount: 4000, date: '30-03-2026', cycleStart: '30-03-2026', cycleEnd: '26-04-2026' },
+      { amount: 4000, date: '27-04-2026', cycleStart: '27-04-2026', cycleEnd: '24-05-2026' },
+    ],
   },
   {
     client: {
@@ -271,7 +323,9 @@ export const DUMMY_CLIENTS = [
       goalType: 'general',
       dob: '1987-12-03', notes: 'Right knee reconstruction 2022. Physio cleared for all exercises.',
       paymentStatus: 'unpaid', status: 'active', isDummy: true,
-      membershipType: 4, startDate: '05-01-2026',
+      membershipType: 4, startDate: '05-01-2026', monthlyFee: 6000,
+      cycleType: 'time', billingType: 'monthly', billingStartDate: '05-01-2026',
+      balance: 0, lastPaidCycleStart: null, lastPaidCycleEnd: null,
     },
     prs: [
       { exerciseId: 'farmers-carry', exerciseName: 'Farmers carry', value: 30, type: 'weight', unit: 'kg', period: 'monthly', date: '2024-11-01', notes: 'Each hand' },
@@ -300,6 +354,10 @@ export const DUMMY_CLIENTS = [
       { date: '22-05-2026' }, { date: '25-05-2026' },
       { date: '27-05-2026' }, { date: '29-05-2026' },
     ],
+    payments: [
+      { amount: 4000, date: '05-03-2026', cycleStart: '05-03-2026', cycleEnd: '01-04-2026' },
+      { amount: 4000, date: '02-04-2026', cycleStart: '02-04-2026', cycleEnd: '29-04-2026' },
+    ],
   },
   {
     client: {
@@ -307,7 +365,9 @@ export const DUMMY_CLIENTS = [
       goalType: 'athletic',
       dob: '1999-01-27', notes: 'University rower. Off-season strength block.',
       paymentStatus: 'paid', status: 'active', isDummy: true,
-      membershipType: 5, startDate: '05-01-2026',
+      membershipType: 5, startDate: '05-01-2026', monthlyFee: 7500,
+      cycleType: 'time', billingType: 'monthly', billingStartDate: '05-01-2026',
+      balance: 0, lastPaidCycleStart: null, lastPaidCycleEnd: null,
     },
     prs: [
       { exerciseId: 'row-2k',      exerciseName: '2 km row',      value: 462, type: 'time',   unit: 'sec', period: 'weekly', date: '2024-10-01', notes: '7:42' },
@@ -335,6 +395,11 @@ export const DUMMY_CLIENTS = [
       { date: '18-05-2026' }, { date: '19-05-2026' }, { date: '20-05-2026' }, { date: '21-05-2026' }, { date: '22-05-2026' },
       { date: '25-05-2026' }, { date: '26-05-2026' }, { date: '27-05-2026' }, { date: '28-05-2026' }, { date: '29-05-2026' },
       { date: '01-06-2026' },
+    ],
+    payments: [
+      { amount: 5000, date: '05-03-2026', cycleStart: '05-03-2026', cycleEnd: '01-04-2026' },
+      { amount: 5000, date: '02-04-2026', cycleStart: '02-04-2026', cycleEnd: '29-04-2026' },
+      { amount: 5000, date: '30-04-2026', cycleStart: '30-04-2026', cycleEnd: '27-05-2026' },
     ],
   },
 ]

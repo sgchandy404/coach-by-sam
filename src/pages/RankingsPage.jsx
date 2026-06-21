@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import PageLoader from '../components/PageLoader.jsx'
 import { getClients, getPRs, getAttributes, getMeasurements, getAttendance } from '../lib/firestore.js'
-import { evaluateClient, SAM_LABELS, CLIENT_LABELS, GOAL_TYPES, STATUS, DEFAULT_THRESHOLDS } from '../lib/evaluate.js'
+import { evaluateClient, SAM_LABELS, CLIENT_LABELS, ATTENDANCE_SAM_LABELS, ATTENDANCE_CLIENT_LABELS, GOAL_TYPES, STATUS, DEFAULT_THRESHOLDS } from '../lib/evaluate.js'
 import { DEFAULT_MEASUREMENTS } from '../data/exercises.js'
 import { getInitials, avatarColor, formatValue } from '../lib/utils.js'
 import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
@@ -77,7 +77,7 @@ export default function RankingsPage() {
                         <DimPill label="Perf"     status={ev.performance.status} />
                         <DimPill label="Physical" status={ev.physical.status} />
                         <DimPill label="Fitness"  status={ev.fitness.status} />
-                        <DimPill label="Attendance" status={ev.attendance?.status} />
+                        <DimPill label="Attendance" status={ev.attendance?.status} attendance />
                       </div>
                     ) : <p style={{ fontSize:12, color:'var(--text-3)' }}>Evaluating…</p>}
                   </div>
@@ -164,7 +164,7 @@ function ClientDetail({ client, clientData, evaluation, onBack }) {
               <DimensionCard title="Performance" icon="🏋️" dim={ev.performance}       labels={labels} isSam={!clientView} />
               <DimensionCard title="Physical"    icon="📏" dim={ev.physical}          labels={labels} isSam={!clientView} />
               <DimensionCard title="Fitness"     icon="⚡" dim={ev.fitness}            labels={labels} isSam={!clientView} />
-              {ev.attendance && <DimensionCard title="Attendance" icon="📅" dim={ev.attendance} labels={labels} isSam={!clientView} />}
+              {ev.attendance && <DimensionCard title="Attendance" icon="📅" dim={ev.attendance} labels={clientView ? ATTENDANCE_CLIENT_LABELS : ATTENDANCE_SAM_LABELS} isSam={!clientView} />}
             </div>
           </div>
         </>
@@ -198,7 +198,8 @@ function DimensionCard({ title, icon, dim, labels, isSam }) {
             const lbl = labels[d.status] || labels.insufficient
             const delta = d.change != null ? `${d.change > 0 ? '+' : ''}${d.change}%`
                         : d.diff  != null ? `${d.diff  > 0 ? '+' : ''}${d.diff} pts`
-                        : d.daysSince != null ? `${d.daysSince}d ago` : ''
+                        : d.daysSince != null ? `${d.daysSince}d ago`
+                        : d.rate  != null ? `${d.rate}%` : ''
             return (
               <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 16px', borderBottom: i < dim.details.length-1 ? '1px solid var(--border)' : 'none' }}>
                 <span style={{ flex:1, fontSize:13, color:'var(--text-2)' }}>{metricLabel}</span>
@@ -315,8 +316,9 @@ function FullStatusCard({ label, status, labels, large }) {
   )
 }
 
-function DimPill({ label, status }) {
-  const lbl = SAM_LABELS[status] || SAM_LABELS.insufficient
+function DimPill({ label, status, attendance }) {
+  const map = attendance ? ATTENDANCE_SAM_LABELS : SAM_LABELS
+  const lbl = map[status] || map.insufficient
   return (
     <span style={{ fontSize:10, fontWeight:600, padding:'2px 7px', borderRadius:100, background:lbl.bg, color:lbl.color, border:`1px solid ${lbl.border}` }}>
       {label}: {lbl.text}
