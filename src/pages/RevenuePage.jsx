@@ -20,7 +20,7 @@ export default function RevenuePage() {
   const load = async () => {
     setLoading(true)
     const all    = await getClients()
-    const active = all.filter(c => c.status === 'active')
+    const active = all.filter(c => c.status === 'active' || c.status === 'paused')
     setClients(active)
     const results = await getAllClientsPayments(active.map(c => c.id))
     const flat = []
