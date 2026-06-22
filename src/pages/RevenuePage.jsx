@@ -123,7 +123,12 @@ export default function RevenuePage() {
                       {getInitials(c.name)}
                     </div>
                     <div style={{ flex:1, minWidth:0 }}>
-                      <p style={{ fontWeight:700, fontSize:15, color:'var(--text)' }}>{c.name}</p>
+                      <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                        <p style={{ fontWeight:700, fontSize:15, color:'var(--text)' }}>{c.name}</p>
+                        {c.status === 'paused' && (
+                          <span style={{ fontSize:10, fontWeight:600, color:'var(--amber)', background:'#FFF3D6', borderRadius:6, padding:'2px 6px', lineHeight:1.4, flexShrink:0 }}>Paused</span>
+                        )}
+                      </div>
                       <p style={{ fontSize:12, color:'var(--text-3)', marginTop:1 }}>
                         {cPayments.length} payment{cPayments.length > 1 ? 's' : ''} · {formatINR(clientTotal)}
                       </p>
