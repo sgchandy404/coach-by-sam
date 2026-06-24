@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { getClients, getAllClientsPayments, deletePayment, recomputeClientPaymentFields } from '../lib/firestore.js'
 import { getInitials, avatarColor, parseDMY, formatINR } from '../lib/utils.js'
 import PageLoader from '../components/PageLoader.jsx'
+import * as XLSX from 'xlsx'
 
 export default function RevenuePage() {
   const [clients, setClients]   = useState([])
@@ -58,6 +59,32 @@ export default function RevenuePage() {
     setPayments(ps => ps.filter(x => x.id !== p.id || x.clientId !== p.clientId))
   }
 
+  const exportToExcel = () => {
+    const makeRow = c => {
+      const collected = payments
+        .filter(p => p.clientId === c.id && p.date?.slice(3) === monthStr)
+        .reduce((s, p) => s + (p.amount || 0), 0)
+      const expected = c.billingType === 'per_session'
+        ? (c.classesPerCycle || 0) * (c.sessionRate || 0)
+        : (c.monthlyFee || 0)
+      return {
+        'Name':              c.name,
+        'Billing Type':      c.billingType === 'per_session' ? 'Per Session' : 'Monthly',
+        'Expected (₹)':     expected,
+        'Collected (₹)':    collected,
+        'Gap (₹)':          expected - collected,
+      }
+    }
+
+    const active = clients.filter(c => c.status === 'active').map(makeRow)
+    const paused = clients.filter(c => c.status === 'paused').map(makeRow)
+
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(active), 'Active')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(paused), 'Paused')
+    XLSX.writeFile(wb, `Revenue_${monthLabel.replace(' ', '_')}.xlsx`)
+  }
+
   if (loading) return <PageLoader label="Loading revenue…" />
 
   return (
@@ -65,7 +92,10 @@ export default function RevenuePage() {
       <div className="page-header">
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
           <h1 style={{ fontFamily:'Playfair Display, serif' }}>{monthLabel}</h1>
-          <div style={{ display:'flex', gap:2 }}>
+          <div style={{ display:'flex', gap:2, alignItems:'center' }}>
+            <button className="btn btn-ghost btn-icon" title="Export to Excel" onClick={exportToExcel}>
+              <ExportIcon />
+            </button>
             <button className="btn btn-ghost btn-icon"
               onClick={() => setViewDate(new Date(year, month - 1, 1))}>
               <ChevLeftIcon />
@@ -177,3 +207,4 @@ export default function RevenuePage() {
 const ChevLeftIcon  = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
 const ChevRightIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
 const TrashIcon     = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+const ExportIcon    = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
