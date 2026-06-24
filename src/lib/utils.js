@@ -164,6 +164,22 @@ export const getClassCycleInfo = (client, attendanceRecords = []) => {
   return { cycleIndex, attendedThisCycle: attended, classesPerCycle: perCycle, progress: Math.min(1, attended / perCycle), cycleComplete }
 }
 
+// Returns billing history as an array of period entries, using the existing
+// billingPeriods subcollection data if available, or synthesizing a single
+// entry from the client's current fields for clients without recorded periods.
+export const getBillingHistory = (client, periods = []) => {
+  if (periods && periods.length > 0) return periods
+  const startDate = client.billingStartDate || client.startDate || null
+  if (!startDate) return []  // no anchor date — can't determine billing window
+  return [{
+    startDate,
+    endDate:     null,
+    billingType: client.billingType  || 'monthly',
+    monthlyFee:  client.monthlyFee   || null,
+    sessionRate: client.sessionRate  || null,
+  }]
+}
+
 // Next Monday from today as DD-MM-YYYY
 export const nextMondayDMY = () => {
   const now = new Date()

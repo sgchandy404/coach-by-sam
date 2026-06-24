@@ -120,6 +120,12 @@ export const deletePayment = (clientId, paymentId) =>
 export const getAllClientsPayments = (clientIds) =>
   Promise.all(clientIds.map(id => getPayments(id).then(payments => ({ clientId: id, payments }))))
 
+export const getAllClientsBillingPeriods = (clientIds) =>
+  Promise.all(clientIds.map(id => getBillingPeriods(id).then(periods => ({ clientId: id, periods }))))
+
+export const getAllClientsAttendance = (clientIds) =>
+  Promise.all(clientIds.map(id => getAttendance(id).then(records => ({ clientId: id, records }))))
+
 // ── Billing periods ───────────────────────────────────────────────────────────
 export const getBillingPeriods = (clientId) =>
   getDocs(query(collection(db, 'clients', clientId, 'billingPeriods'), orderBy('createdAt')))
@@ -216,11 +222,8 @@ export const seedDummyData = async (clientsData) => {
 // Flush: delete every client and their subcollections, plus custom exercises
 export const flushAllData = async () => {
   const clients = await getDocs(collection(db, 'clients'))
-  console.log('[flush] found', clients.docs.length, 'clients')
   for (const cDoc of clients.docs) {
-    console.log('[flush] deleting client', cDoc.id, cDoc.data().name)
     await deleteClientFull(cDoc.id)
-    console.log('[flush] done', cDoc.id)
   }
   const exSnap = await getDocs(collection(db, 'customExercises'))
   const batch = writeBatch(db)
