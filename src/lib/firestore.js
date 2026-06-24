@@ -19,13 +19,18 @@ export const updateClient = (id, data) =>
 // Full delete: removes client doc + all subcollection documents
 export const deleteClientFull = async (id) => {
   const subcols = ['prs', 'attributes', 'measurements', 'attendance', 'payments', 'billingPeriods']
-  const batch = writeBatch(db)
+  const refs = []
   for (const sub of subcols) {
     const snap = await getDocs(collection(db, 'clients', id, sub))
-    snap.docs.forEach(d => batch.delete(d.ref))
+    snap.docs.forEach(d => refs.push(d.ref))
   }
-  batch.delete(doc(db, 'clients', id))
-  return batch.commit()
+  refs.push(doc(db, 'clients', id))
+  // Firestore batch limit is 500 — commit in chunks
+  for (let i = 0; i < refs.length; i += 499) {
+    const batch = writeBatch(db)
+    refs.slice(i, i + 499).forEach(r => batch.delete(r))
+    await batch.commit()
+  }
 }
 
 // ── PRs ───────────────────────────────────────────────────────────────────────
@@ -211,8 +216,11 @@ export const seedDummyData = async (clientsData) => {
 // Flush: delete every client and their subcollections, plus custom exercises
 export const flushAllData = async () => {
   const clients = await getDocs(collection(db, 'clients'))
+  console.log('[flush] found', clients.docs.length, 'clients')
   for (const cDoc of clients.docs) {
+    console.log('[flush] deleting client', cDoc.id, cDoc.data().name)
     await deleteClientFull(cDoc.id)
+    console.log('[flush] done', cDoc.id)
   }
   const exSnap = await getDocs(collection(db, 'customExercises'))
   const batch = writeBatch(db)
