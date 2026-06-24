@@ -36,7 +36,7 @@ export default function AttendancePage() {
 
   useEffect(() => {
     getClients()
-      .then(cs => setClients(cs.filter(c => c.status !== 'deactivated')))
+      .then(cs => setClients(cs.filter(c => c.status === 'active')))
   }, [])
 
   useEffect(() => {
@@ -471,9 +471,9 @@ function ExerciseLogModal({ client, dateStr, allRecords, onUpdate, onClose }) {
 
 // ── Cycle attendance summary (below calendar) ─────────────────────────────────
 function CycleAttendanceSummary({ clients, clientRecordsMap, viewDate }) {
-  // Use the 15th of the viewed month as the cycle reference so stats reflect
-  // whichever billing cycle falls within the calendar month being displayed.
-  const refDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), 15)
+  // Use today as the cycle reference so the window matches the client's current
+  // billing cycle — the same anchor used in ClientProfile.
+  const refDate = new Date()
   const refStr  = formatDMY(refDate)
 
   const activeClients = clients.filter(c => c.status === 'active')
