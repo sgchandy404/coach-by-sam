@@ -37,7 +37,7 @@ export default function AttendancePage() {
 
   useEffect(() => {
     getClients()
-      .then(cs => setClients(cs.filter(c => c.status === 'active')))
+      .then(cs => setClients(cs))
   }, [])
 
   useEffect(() => {
@@ -116,25 +116,18 @@ export default function AttendancePage() {
   const exportAttendance = async () => {
     const monthStr = `${String(month + 1).padStart(2, '0')}-${year}`
 
-    // Fetch paused clients and their attendance on demand (not loaded in main UI)
-    const allClients = await getClients()
-    const pausedClients = allClients.filter(c => c.status === 'paused')
-    const pausedRecordsMap = {}
-    await Promise.all(pausedClients.map(async c => {
-      const records = await getAttendance(c.id)
-      pausedRecordsMap[c.id] = records
-    }))
-
     const monthRecords = (c) =>
-      (c.status === 'paused' ? (pausedRecordsMap[c.id] || []) : (clientRecordsMap[c.id] || []))
-        .filter(r => r.date?.slice(3) === monthStr)
+      (clientRecordsMap[c.id] || []).filter(r => r.date?.slice(3) === monthStr)
+
+    const activeClients = clients.filter(c => c.status === 'active')
+    const pausedClients = clients.filter(c => c.status === 'paused')
 
     // Active and Paused summary sheets — one row per client, just the count
-    const activeRows = clients.map(c => ({ Name: c.name, Sessions: monthRecords(c).length }))
+    const activeRows = activeClients.map(c => ({ Name: c.name, Sessions: monthRecords(c).length }))
     const pausedRows = pausedClients.map(c => ({ Name: c.name, Sessions: monthRecords(c).length }))
 
     // Detailed sheet — dates as rows, all clients as columns, ✓ marks + Total row
-    const allForDetail = [...clients, ...pausedClients]
+    const allForDetail = [...activeClients, ...pausedClients]
     const days = Array.from({ length: totalDays }, (_, i) => i + 1)
     const totals = { Date: 'Total' }
     const detailRows = days.map(d => {
@@ -255,15 +248,25 @@ function DaySheet({ dateStr, clients, attendanceMap, clientRecordsMap, onToggle,
             {attended.size} client{attended.size !== 1 ? 's' : ''} attended
           </p>
           <div style={{ display:'flex', flexDirection:'column', maxHeight:'55vh', overflowY:'auto' }}>
-            {clients.map(c => {
+            {[...clients].sort((a, b) => {
+              if (a.status === b.status) return 0
+              return a.status === 'active' ? -1 : 1
+            }).map(c => {
+              const isActive      = c.status === 'active'
+              const isPast        = dayDate < new Date(new Date().setHours(0,0,0,0))
               const isAttended    = attended.has(c.id)
+              // Today/future: active only. Past: active always + non-active only if they attended
+              if (!isActive && (!isPast || !isAttended)) return null
               const startD        = parseDMY(c.startDate)
               const isBeforeStart = startD && startD > dayDate
+              if (isBeforeStart && !isAttended) return null
+              const isPaused      = !isActive
               const isClasses     = c.cycleType === 'classes'
               const weekAttended  = weekDates.filter(ds => attendanceMap[ds]?.has(c.id)).length
               const weekExpected  = !isClasses ? (c.membershipType || null) : null
               // Cycle stats — branch on cycleType
-              const cycleWindow   = !isClasses && c.startDate ? getMonthWindow(c.startDate, dateStr) : null
+              const cycleAnchor   = c.billingStartDate || c.startDate
+              const cycleWindow   = !isClasses && cycleAnchor ? getMonthWindow(cycleAnchor, formatDMY(new Date())) : null
               const classInfo     = isClasses ? getClassCycleInfo(c, clientRecordsMap[c.id] || []) : null
               const monthAttended = isClasses
                 ? (classInfo?.attendedThisCycle ?? 0)
@@ -280,11 +283,11 @@ function DaySheet({ dateStr, clients, attendanceMap, clientRecordsMap, onToggle,
               const isExpanded = expanded === c.id
               return (
                 <div key={c.id}
-                  style={{ borderBottom:'1px solid var(--border)', opacity: isBeforeStart ? 0.4 : 1 }}>
+                  style={{ borderBottom:'1px solid var(--border)', opacity: isPaused ? 0.6 : 1 }}>
                   <div style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 2px' }}>
                   {/* Tap avatar+name area to toggle attendance */}
-                  <div style={{ display:'flex', alignItems:'center', gap:12, flex:1, minWidth:0, cursor: isBeforeStart ? 'default' : 'pointer' }}
-                    onClick={() => !isBeforeStart && onToggle(c.id, dateStr)}>
+                  <div style={{ display:'flex', alignItems:'center', gap:12, flex:1, minWidth:0, cursor: isPaused ? 'default' : 'pointer' }}
+                    onClick={() => !isPaused && onToggle(c.id, dateStr)}>
                     <div className="avatar" style={{ background: avatarColor(c.name), width:34, height:34, fontSize:12, flexShrink:0 }}>
                       {getInitials(c.name)}
                     </div>
