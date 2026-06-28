@@ -321,21 +321,19 @@ function DaySheet({ dateStr, clients, attendanceMap, clientRecordsMap, onToggle,
                     </div>
                   </div>
 
-                  {/* Exercise log button — only when attended */}
-                  {isAttended && !isBeforeStart && (
-                    <button
-                      onClick={e => { e.stopPropagation(); setExerciseClient(c) }}
-                      style={{ background: exCount > 0 ? 'var(--accent-light)' : 'transparent',
-                        border: `1.5px solid ${exCount > 0 ? '#C9C6F3' : 'var(--border)'}`,
-                        borderRadius:'var(--r-sm)', padding:'5px 8px', cursor:'pointer',
-                        display:'flex', alignItems:'center', gap:4,
-                        color: exCount > 0 ? 'var(--accent-text)' : 'var(--text-3)',
-                        flexShrink:0 }}
-                      title="Log exercises">
-                      <NotepadIcon />
-                      {exCount > 0 && <span style={{ fontSize:11, fontWeight:600 }}>{exCount}</span>}
-                    </button>
-                  )}
+                  {/* Exercise log button — always visible */}
+                  <button
+                    onClick={e => { e.stopPropagation(); setExerciseClient(c) }}
+                    style={{ background: exCount > 0 ? 'var(--accent-light)' : 'transparent',
+                      border: `1.5px solid ${exCount > 0 ? '#C9C6F3' : 'var(--border)'}`,
+                      borderRadius:'var(--r-sm)', padding:'5px 8px', cursor:'pointer',
+                      display:'flex', alignItems:'center', gap:4,
+                      color: exCount > 0 ? 'var(--accent-text)' : 'var(--text-3)',
+                      flexShrink:0 }}
+                    title="Log exercises">
+                    <NotepadIcon />
+                    {exCount > 0 && <span style={{ fontSize:11, fontWeight:600 }}>{exCount}</span>}
+                  </button>
 
                   {/* Attendance toggle circle */}
                   <div
