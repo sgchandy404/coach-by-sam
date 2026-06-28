@@ -1179,7 +1179,21 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit, 
               const carryAmt = carryForwardChoice === 'carry' ? outstanding : 0
               const periods  = await getBillingPeriods(client.id)
               const active   = periods.find(p => !p.endDate)
-              if (active) await closeBillingPeriod(client.id, active.id, newPeriodStart)
+              if (active) {
+                await closeBillingPeriod(client.id, active.id, newPeriodStart)
+              } else {
+                // No billingPeriods yet — write the implicit current period before closing it
+                const implicitStart = client.billingStartDate || client.startDate
+                if (implicitStart) {
+                  await addBillingPeriod(client.id, {
+                    startDate: implicitStart, endDate: newPeriodStart,
+                    cycleType: client.cycleType, membershipType: client.membershipType,
+                    classesPerCycle: client.classesPerCycle, billingType: client.billingType,
+                    monthlyFee: client.monthlyFee, sessionRate: client.sessionRate,
+                    carryForwardAmount: 0, label: null,
+                  })
+                }
+              }
               await addBillingPeriod(client.id, {
                 startDate: newPeriodStart, endDate: null,
                 cycleType: newCycleType, membershipType: newMembership,

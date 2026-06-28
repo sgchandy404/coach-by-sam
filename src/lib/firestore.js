@@ -128,8 +128,18 @@ export const getAllClientsAttendance = (clientIds) =>
 
 // ── Billing periods ───────────────────────────────────────────────────────────
 export const getBillingPeriods = (clientId) =>
-  getDocs(query(collection(db, 'clients', clientId, 'billingPeriods'), orderBy('createdAt')))
-    .then(s => s.docs.map(d => ({ id: d.id, ...d.data() })))
+  getDocs(collection(db, 'clients', clientId, 'billingPeriods'))
+    .then(s => {
+      const docs = s.docs.map(d => ({ id: d.id, ...d.data() }))
+      // Sort by startDate (DD-MM-YYYY) ascending; fall back to createdAt for same startDate
+      return docs.sort((a, b) => {
+        const [ad, am, ay] = (a.startDate || '').split('-').map(Number)
+        const [bd, bm, by] = (b.startDate || '').split('-').map(Number)
+        const aTime = new Date(ay, am - 1, ad).getTime() || 0
+        const bTime = new Date(by, bm - 1, bd).getTime() || 0
+        return aTime - bTime
+      })
+    })
 
 export const addBillingPeriod = (clientId, data) =>
   addDoc(collection(db, 'clients', clientId, 'billingPeriods'), { ...data, createdAt: serverTimestamp() })
