@@ -109,7 +109,6 @@ export const getPaymentStatus = (client) => {
     const balance       = client.balance ?? 0
     const carryForward  = client.carryForwardAmount ?? 0
     const cyclePaid     = lastPaidIndex >= currentIndex
-    // carryForward is folded into effectiveFee, so balance >= 0 means fully settled
     const carrySettled  = carryForward === 0 || balance >= 0
     if (cyclePaid && carrySettled) return 'paid'
     if (cyclePaid || carryForward > 0) return 'partial'

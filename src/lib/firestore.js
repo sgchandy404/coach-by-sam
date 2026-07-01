@@ -147,32 +147,64 @@ export const addBillingPeriod = (clientId, data) =>
 export const closeBillingPeriod = (clientId, periodId, endDate) =>
   updateDoc(doc(db, 'clients', clientId, 'billingPeriods', periodId), { endDate })
 
-// Recomputes balance from payments in the current billing period.
-// periodStartDate (DD-MM-YYYY): only payments on/after this date are counted.
-// carryForwardAmount: outstanding debt carried from the previous billing period.
-//   Folded into effectiveFee so balance naturally drains to 0 as payments accumulate.
-//   Cleared on the client doc automatically once balance >= 0.
+export const updateBillingPeriod = (clientId, periodId, data) =>
+  updateDoc(doc(db, 'clients', clientId, 'billingPeriods', periodId), data)
+
+// Recomputes balance and carryForwardAmount from actual payment data.
+// When billing periods exist, carry-forward is derived dynamically from unpaid closed periods
+// so that adding/deleting payments for old periods is always reflected correctly.
+// Falls back to date-range filtering for clients with no billing periods.
 export const recomputeClientPaymentFields = async (clientId, fee, periodStartDate = null, carryForwardAmount = 0) => {
-  const allPayments = await getPayments(clientId)
-  const periodStart = periodStartDate ? parseDMY(periodStartDate) : null
-  const payments    = periodStart
-    ? allPayments.filter(p => { const d = parseDMY(p.date); return d && d >= periodStart })
-    : allPayments
-  const totalPaid     = payments.reduce((s, p) => s + (p.amount || 0), 0)
-  const effectiveFee  = (fee || 0) + (carryForwardAmount || 0)
-  const balance       = totalPaid - effectiveFee
-  const mostRecent    = payments[0] || null
-  const lastPaidCycleIndex = payments.reduce((max, p) =>
+  const [allPayments, periods] = await Promise.all([getPayments(clientId), getBillingPeriods(clientId)])
+
+  const paymentsForPeriod = (period) => {
+    const s = parseDMY(period.startDate)
+    const e = period.endDate ? parseDMY(period.endDate) : null
+    return allPayments.filter(p => {
+      if (p.billingPeriodId) return p.billingPeriodId === period.id
+      const d = parseDMY(p.date)
+      return d && s && d >= s && (!e || d < e)
+    })
+  }
+
+  let newCarryForward = carryForwardAmount
+  let activePayments = []
+  const mostRecent = allPayments[0] || null
+
+  if (periods.length > 0) {
+    const activePeriod = [...periods].reverse().find(p => !p.endDate) || periods[periods.length - 1]
+    // Dynamically compute carry-forward from all closed periods
+    newCarryForward = periods
+      .filter(p => p.endDate)
+      .reduce((carry, period) => {
+        const periodFee = period.billingType === 'monthly'
+          ? (period.monthlyFee || 0)
+          : (period.classesPerCycle || 0) * (period.sessionRate || 0)
+        if (!periodFee) return carry
+        const paid = paymentsForPeriod(period).reduce((s, p) => s + (p.amount || 0), 0)
+        return carry + Math.max(0, periodFee - paid)
+      }, 0)
+    activePayments = paymentsForPeriod(activePeriod)
+  } else {
+    // No billing periods — fall back to date-range filtering from periodStartDate
+    const periodStart = periodStartDate ? parseDMY(periodStartDate) : null
+    activePayments = periodStart
+      ? allPayments.filter(p => { const d = parseDMY(p.date); return d && d >= periodStart })
+      : allPayments
+  }
+
+  const activePaid = activePayments.reduce((s, p) => s + (p.amount || 0), 0)
+  // lastPaidCycleIndex scoped to active period so billing resets don't pollute it
+  const lastPaidCycleIndex = activePayments.reduce((max, p) =>
     p.cycleIndex != null ? Math.max(max, p.cycleIndex) : max, -1)
+
+  const balance = activePaid - ((fee || 0) + newCarryForward)
   await updateDoc(doc(db, 'clients', clientId), {
     balance,
+    carryForwardAmount:  newCarryForward,
     lastPaidCycleStart:  mostRecent?.cycleStart ?? null,
     lastPaidCycleEnd:    mostRecent?.cycleEnd   ?? null,
     lastPaidCycleIndex:  lastPaidCycleIndex >= 0 ? lastPaidCycleIndex : null,
-    // carryForwardAmount is set here so it persists across payment recordings.
-    // Do NOT auto-clear when balance >= 0 — the display formula depends on it.
-    // It resets only when billing changes (change-billing handler passes the new value).
-    carryForwardAmount:  carryForwardAmount || 0,
   })
 }
 

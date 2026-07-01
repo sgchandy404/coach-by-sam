@@ -1,14 +1,12 @@
 import { useState, useEffect } from 'react'
-import { getClients, getAllClientsPayments, getAllClientsBillingPeriods, getAllClientsAttendance, deletePayment, recomputeClientPaymentFields } from '../lib/firestore.js'
-import { getInitials, avatarColor, parseDMY, formatINR, getBillingHistory } from '../lib/utils.js'
+import { getClients, getAllClientsPayments, deletePayment, recomputeClientPaymentFields } from '../lib/firestore.js'
+import { getInitials, avatarColor, formatINR } from '../lib/utils.js'
 import PageLoader from '../components/PageLoader.jsx'
 import * as XLSX from 'xlsx'
 
 export default function RevenuePage() {
   const [clients, setClients]         = useState([])
   const [payments, setPayments]       = useState([])
-  const [periodsMap, setPeriodsMap]   = useState({}) // { clientId: billingPeriod[] }
-  const [attendanceMap, setAttendanceMap] = useState({}) // { clientId: attendanceRecord[] }
   const [loading, setLoading]         = useState(true)
   const [viewDate, setViewDate]       = useState(new Date())
   const [expanded, setExpanded]       = useState(null)
@@ -26,10 +24,8 @@ export default function RevenuePage() {
     const active = all.filter(c => c.status === 'active' || c.status === 'paused')
     setClients(active)
     const ids = active.map(c => c.id)
-    const [paymentResults, periodsResults, attendanceResults] = await Promise.all([
+    const [paymentResults] = await Promise.all([
       getAllClientsPayments(ids),
-      getAllClientsBillingPeriods(ids),
-      getAllClientsAttendance(ids),
     ])
     const flat = []
     paymentResults.forEach(({ clientId, payments: ps }) => {
@@ -37,88 +33,15 @@ export default function RevenuePage() {
       ps.forEach(p => flat.push({ ...p, clientId, clientName: c?.name || '', clientFee: c?.monthlyFee || 0 }))
     })
     setPayments(flat)
-    const pMap = {}
-    periodsResults.forEach(({ clientId, periods }) => { pMap[clientId] = periods })
-    setPeriodsMap(pMap)
-    const aMap = {}
-    attendanceResults.forEach(({ clientId, records }) => { aMap[clientId] = records })
-    setAttendanceMap(aMap)
     setLoading(false)
   }
 
   useEffect(() => { load() }, [viewDate])
 
-  // Filter payments by calendar month (p.date DD-MM-YYYY → slice(3) = "MM-YYYY")
+  // Cash basis: attribute payment to the month it was received
   const monthPayments = payments.filter(p => p.date && p.date.slice(3) === monthStr)
 
   const collected = monthPayments.reduce((s, p) => s + (p.amount || 0), 0)
-
-  // Payments received this month that are for a previous cycle (reduce effective June collected)
-  const catchup = monthPayments.reduce((s, p) => {
-    if (!p.cycleStart) return s
-    return p.cycleStart.slice(3) !== monthStr ? s + (p.amount || 0) : s
-  }, 0)
-
-  // Outstanding carry-forward from closed billing periods — only count if not yet covered by payments
-  const priorDues = clients.reduce((s, c) => {
-    const carry   = Math.max(0, c.carryForwardAmount || 0)
-    if (!carry) return s
-    const balance = c.balance ?? 0
-    if (balance >= 0) return s  // carry has been absorbed by payments
-    return s + Math.min(carry, Math.abs(balance))
-  }, 0)
-
-  // Expected: for monthly clients, walk 28-day cycles within each billing period
-  // and count the fee when a cycle START DATE falls in the selected calendar month.
-  // This prevents double-counting when a client has multiple billing periods that
-  // both overlap the same month. For per-session clients, count sessions attended
-  // in the month × rate.
-  const msPerDay   = 86400000
-  const monthStart = new Date(year, month, 1)
-  const monthEnd   = new Date(year, month + 1, 0)
-  const expected = clients.reduce((total, c) => {
-    const history = getBillingHistory(c, periodsMap[c.id] || [])
-    const records = attendanceMap[c.id] || []
-    let clientExpected = 0
-    for (const period of history) {
-      const pStart = parseDMY(period.startDate)
-      if (!pStart) continue
-      const pEnd = period.endDate ? parseDMY(period.endDate) : null
-      if (!period.billingType || period.billingType === 'monthly') {
-        // Walk cycles: each 28 days from pStart, stop at pEnd or past monthEnd
-        let cycleStart = pStart
-        while (!pEnd || cycleStart < pEnd) {
-          if (cycleStart > monthEnd) break
-          if (cycleStart >= monthStart) {
-            // First cycle starting in this month — count once then stop.
-            // Active clients: always count. Paused: only if attended during this cycle.
-            const cycleEnd = new Date(cycleStart.getTime() + 27 * msPerDay)
-            const hasAttendance = records.some(r => {
-              const d = parseDMY(r.date)
-              return d && d >= cycleStart && d <= cycleEnd
-            })
-            if (c.status === 'active' || hasAttendance) {
-              clientExpected += period.monthlyFee || 0
-            }
-            break
-          }
-          cycleStart = new Date(cycleStart.getTime() + 28 * msPerDay)
-        }
-      } else if (period.billingType === 'per_session') {
-        const overlapStart = pStart > monthStart ? pStart : monthStart
-        if (overlapStart > monthEnd) continue
-        if (pEnd && overlapStart >= pEnd) continue  // pEnd is exclusive
-        const overlapRecords = records.filter(r => {
-          const d = parseDMY(r.date)
-          return d && d >= overlapStart && (!pEnd || d < pEnd) && d <= monthEnd
-        })
-        clientExpected += overlapRecords.length * (period.sessionRate || 0)
-      }
-    }
-    return total + clientExpected
-  }, 0)
-
-  const gap = expected - collected
 
   // Group month payments by client
   const grouped = {}
@@ -137,18 +60,13 @@ export default function RevenuePage() {
 
   const exportToExcel = () => {
     const makeRow = c => {
-      const collected = payments
-        .filter(p => p.clientId === c.id && p.date?.slice(3) === monthStr)
+      const clientCollected = monthPayments
+        .filter(p => p.clientId === c.id)
         .reduce((s, p) => s + (p.amount || 0), 0)
-      const expected = c.billingType === 'per_session'
-        ? (c.classesPerCycle || 0) * (c.sessionRate || 0)
-        : (c.monthlyFee || 0)
       return {
-        'Name':              c.name,
-        'Billing Type':      c.billingType === 'per_session' ? 'Per Session' : 'Monthly',
-        'Expected (₹)':     expected,
-        'Collected (₹)':    collected,
-        'Gap (₹)':          expected - collected,
+        'Name':           c.name,
+        'Billing Type':   c.billingType === 'per_session' ? 'Per Session' : 'Monthly',
+        'Collected (₹)':  clientCollected,
       }
     }
 
@@ -187,27 +105,13 @@ export default function RevenuePage() {
 
       <div className="section">
         {/* Summary band */}
-        <div style={{ background:'var(--surface)', borderRadius:16, border:'1px solid var(--border)', padding:'18px 20px', marginBottom:16 }}>
-          <div style={{ display:'flex', gap:0 }}>
-            {[
-              { label:'Collected', value: collected,        color:'var(--teal)' },
-              { label:'Expected',  value: expected,         color:'var(--text)' },
-              { label:'Prior Dues', value: priorDues,         color: priorDues > 0 ? '#A8720A' : 'var(--text-3)' },
-              { label:'Gap',       value: Math.abs(gap) + catchup, color: gap > 0 || catchup > 0 ? '#B84C2A' : 'var(--teal)' },
-            ].map((stat, i, arr) => (
-              <div key={stat.label} style={{ flex:1, textAlign:'center', position:'relative' }}>
-                {i < arr.length - 1 && (
-                  <div style={{ position:'absolute', right:0, top:'10%', height:'80%', width:1, background:'var(--border)' }} />
-                )}
-                <p style={{ fontSize:16, fontWeight:700, color:stat.color, fontFamily:'Playfair Display, serif', lineHeight:1.2 }}>
-                  {formatINR(stat.value)}
-                </p>
-                <p style={{ fontSize:10, color:'var(--text-3)', fontWeight:500, marginTop:3, textTransform:'uppercase', letterSpacing:'0.5px' }}>
-                  {stat.label}
-                </p>
-              </div>
-            ))}
-          </div>
+        <div style={{ background:'var(--surface)', borderRadius:16, border:'1px solid var(--border)', padding:'18px 20px', marginBottom:16, textAlign:'center' }}>
+          <p style={{ fontSize:22, fontWeight:700, color:'var(--teal)', fontFamily:'Playfair Display, serif', lineHeight:1.2 }}>
+            {formatINR(collected)}
+          </p>
+          <p style={{ fontSize:10, color:'var(--text-3)', fontWeight:500, marginTop:3, textTransform:'uppercase', letterSpacing:'0.5px' }}>
+            Collected
+          </p>
         </div>
 
         {/* Payment rows grouped by client */}

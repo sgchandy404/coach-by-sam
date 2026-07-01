@@ -7,7 +7,7 @@ import {
   markAttended, unmarkAttended,
   addPayment, getPayments, deletePayment,
   recomputeClientPaymentFields, recomputeClassCycleFields, startNextCycle,
-  getBillingPeriods, addBillingPeriod, closeBillingPeriod,
+  getBillingPeriods, addBillingPeriod, closeBillingPeriod, updateBillingPeriod,
 } from '../lib/firestore.js'
 import {
   getInitials, avatarColor, parseDMY, formatDMY,
@@ -89,7 +89,12 @@ export default function ClientsPage({ clientId, setClientId, setTab, navResetKey
   const [paymentModal, setPaymentModal] = useState(null) // { client }
   const [profile, setProfile]           = useState(null) // selected client for full-screen view
 
-  const load = () => getClients().then(c => { setClients(c); setLoading(false) })
+  const load = async () => {
+    const cs = await getClients()
+    setClients(cs)
+    setProfile(prev => prev ? (cs.find(c => c.id === prev.id) || prev) : null)
+    setLoading(false)
+  }
   useEffect(() => { load() }, [])
 
   // When the Clients nav item is tapped, navResetKey increments — return to list view
@@ -376,12 +381,22 @@ function syntheticPeriod(client) {
 }
 
 function paymentsForPeriod(payments, period) {
+  const explicit = payments.filter(p => p.billingPeriodId && p.billingPeriodId === period.id)
+  if (explicit.length > 0) return explicit
   const start = parseDMY(period.startDate)
   const end   = period.endDate ? parseDMY(period.endDate) : null
   return payments.filter(p => {
     const d = parseDMY(p.date)
     return d && start && d >= start && (!end || d < end)
   })
+}
+
+function periodPickerLabel(period) {
+  const fmt = dmy => parseDMY(dmy)?.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) ?? '?'
+  const fee = period.billingType === 'monthly'
+    ? formatINR(period.monthlyFee ?? 0)
+    : `${formatINR(period.sessionRate ?? 0)}/class`
+  return `${fmt(period.startDate)} – ${period.endDate ? fmt(period.endDate) : 'onwards'} · ${fee}`
 }
 
 function periodLabel(period) {
@@ -449,13 +464,15 @@ function ClientProfile({ client: initialClient, onBack, onManage, onEdit, onPaym
 
   const pStatus  = getPaymentStatus(client)
   const pStyle   = PAYMENT_STATUS_STYLE[pStatus]
-  const balance  = client.balance ?? null
   const lastPay  = payments[0] || null
-  // For per-session classes, balance reflects the full cycle fee (classesPerCycle × rate)
-  // but clients pay as they go. Display balance = what's actually owed right now:
-  // carryForward + attended×rate − totalPaid.
-  // Formula: balance + (classesPerCycle − attendedThisCycle) × sessionRate
   const isSessions = client.billingType === 'per_session'
+  const isUnpaid = ['unpaid', 'overdue', 'partial'].includes(pStatus)
+  const fee = isClasses && isSessions
+    ? (client.classesPerCycle || 0) * (client.sessionRate || 0)
+    : (client.monthlyFee || 0)
+  const storedBalance = client.balance ?? null
+  // balance=0 or null on an unpaid client means it was never properly computed — fall back to fee
+  const balance = ((storedBalance === 0 || storedBalance === null) && isUnpaid && fee > 0) ? -fee : storedBalance
   const displayBalance = (isClasses && isSessions && balance != null)
     ? balance + ((client.classesPerCycle ?? 0) - (client.attendedThisCycle ?? 0)) * (client.sessionRate ?? 0)
     : balance
@@ -1179,33 +1196,40 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit, 
               const carryAmt = carryForwardChoice === 'carry' ? outstanding : 0
               const periods  = await getBillingPeriods(client.id)
               const active   = periods.find(p => !p.endDate)
-              if (active) {
-                await closeBillingPeriod(client.id, active.id, newPeriodStart)
-              } else {
-                // No billingPeriods yet — write the implicit current period before closing it
-                const implicitStart = client.billingStartDate || client.startDate
-                if (implicitStart) {
-                  await addBillingPeriod(client.id, {
-                    startDate: implicitStart, endDate: newPeriodStart,
-                    cycleType: client.cycleType, membershipType: client.membershipType,
-                    classesPerCycle: client.classesPerCycle, billingType: client.billingType,
-                    monthlyFee: client.monthlyFee, sessionRate: client.sessionRate,
-                    carryForwardAmount: 0, label: null,
-                  })
-                }
-              }
-              await addBillingPeriod(client.id, {
-                startDate: newPeriodStart, endDate: null,
+              const newPeriodData = {
                 cycleType: newCycleType, membershipType: newMembership,
                 classesPerCycle: newClasses, billingType: newBillingType,
                 monthlyFee: newMonthlyFee, sessionRate: newSessionRate,
                 carryForwardAmount: carryAmt, label: null,
-              })
+              }
+              if (active && active.startDate === newPeriodStart) {
+                // Same-day change — update the active period in place instead of closing + reopening
+                await updateBillingPeriod(client.id, active.id, newPeriodData)
+              } else {
+                if (active) {
+                  await closeBillingPeriod(client.id, active.id, newPeriodStart)
+                } else {
+                  // No billingPeriods yet — write the implicit current period before closing it
+                  const implicitStart = client.billingStartDate || client.startDate
+                  if (implicitStart) {
+                    await addBillingPeriod(client.id, {
+                      startDate: implicitStart, endDate: newPeriodStart,
+                      cycleType: client.cycleType, membershipType: client.membershipType,
+                      classesPerCycle: client.classesPerCycle, billingType: client.billingType,
+                      monthlyFee: client.monthlyFee, sessionRate: client.sessionRate,
+                      carryForwardAmount: 0, label: null,
+                    })
+                  }
+                }
+                await addBillingPeriod(client.id, {
+                  startDate: newPeriodStart, endDate: null, ...newPeriodData,
+                })
+              }
               await onEdit({
                 cycleType: newCycleType, membershipType: newMembership,
                 classesPerCycle: newClasses, billingType: newBillingType,
                 monthlyFee: newMonthlyFee, sessionRate: newSessionRate,
-                billingStartDate: newPeriodStart,
+                billingStartDate: newPeriodStart, startDate: newPeriodStart,
                 ...(newCycleType === 'classes' ? {
                   currentCycleStartDate: newPeriodStart,
                   currentCycleIndex: 0,
@@ -1541,13 +1565,20 @@ function PaymentModal({ client: initialClient, onClose, onClientUpdated }) {
           </div>
         )}
 
-        {/* Balance — only show when non-zero (zero on a fresh client means no payments yet) */}
+        {/* Balance — show when non-zero, or when client is unpaid with balance=0 (stale) */}
         {(() => {
           const isClassesPay = client.cycleType === 'classes'
           const isSessionsPay = client.billingType === 'per_session'
-          const db = isClassesPay && isSessionsPay && client.balance != null
-            ? (client.balance ?? 0) + ((client.classesPerCycle ?? 0) - (client.attendedThisCycle ?? 0)) * (client.sessionRate ?? 0)
-            : (client.balance ?? null)
+          const fee = isClassesPay && isSessionsPay
+            ? (client.classesPerCycle || 0) * (client.sessionRate || 0)
+            : (client.monthlyFee || 0)
+          const storedBalance = client.balance ?? null
+          const isUnpaid = ['unpaid', 'overdue', 'partial'].includes(pStatus)
+          // balance=0 or null on an unpaid client means it was never properly computed — fall back to fee
+const rawBalance = ((storedBalance === 0 || storedBalance === null) && isUnpaid && fee > 0) ? -fee : storedBalance
+          const db = isClassesPay && isSessionsPay && rawBalance != null
+            ? rawBalance + ((client.classesPerCycle ?? 0) - (client.attendedThisCycle ?? 0)) * (client.sessionRate ?? 0)
+            : rawBalance
           if (db == null || db === 0) return null
           return (
             <div style={{ textAlign:'center', marginBottom:18 }}>
@@ -1589,11 +1620,36 @@ function PayView({ client, onBack, onClose, onSaved }) {
     ? String(Math.abs(displayBalance))
     : String(isClasses && isSessions ? (client.sessionRate || '') : (fullFee || ''))
 
-  const [sessions, setSessions]     = useState('')
-  const [amount, setAmount]         = useState(defaultAmount)
-  const [paymentDate, setPaymentDate] = useState(formatDMY(new Date()))
-  const [note, setNote]             = useState('')
-  const [saving, setSaving]         = useState(false)
+  const [sessions, setSessions]         = useState('')
+  const [amount, setAmount]             = useState(defaultAmount)
+  const [paymentDate, setPaymentDate]   = useState(formatDMY(new Date()))
+  const [note, setNote]                 = useState('')
+  const [saving, setSaving]             = useState(false)
+  const [billingPeriods, setBillingPeriods] = useState([])
+  const [selectedPeriodId, setSelectedPeriodId] = useState(null)
+
+  useEffect(() => {
+    Promise.all([getBillingPeriods(client.id), getPayments(client.id)]).then(([periods, pmts]) => {
+      // Only show periods that are unpaid or partially paid
+      const unpaid = periods.filter(period => {
+        const fee = period.billingType === 'monthly'
+          ? (period.monthlyFee || 0)
+          : (period.classesPerCycle || 0) * (period.sessionRate || 0)
+        if (!fee) return true // per_session open-ended: always show
+        const paid = pmts
+          .filter(p => p.billingPeriodId ? p.billingPeriodId === period.id : (() => {
+            const d = parseDMY(p.date), s = parseDMY(period.startDate), e = period.endDate ? parseDMY(period.endDate) : null
+            return d && s && d >= s && (!e || d < e)
+          })())
+          .reduce((s, p) => s + (p.amount || 0), 0)
+        return paid < fee
+      })
+      const list = unpaid.length > 0 ? unpaid : periods.slice(-1) // fallback: show latest
+      setBillingPeriods(list)
+      const active = [...list].reverse().find(p => !p.endDate) || list[list.length - 1]
+      setSelectedPeriodId(active?.id ?? null)
+    })
+  }, [client.id])
 
   const numSessions = Number(sessions) || 0
   const numAmount   = Number(amount) || 0
@@ -1614,11 +1670,12 @@ function PayView({ client, onBack, onClose, onSaved }) {
     await addPayment(client.id, {
       amount: numAmount,
       date: paymentDate,
-      cycleStart:  cycleWindow?.cycleStart ?? null,
-      cycleEnd:    cycleWindow?.cycleEnd   ?? null,
-      cycleIndex:  isClasses ? (client.currentCycleIndex ?? 0) : null,
-      sessions: isSessions && !isClasses ? (numSessions || null) : null,
-      note: note.trim() || null,
+      cycleStart:      cycleWindow?.cycleStart ?? null,
+      cycleEnd:        cycleWindow?.cycleEnd   ?? null,
+      cycleIndex:      isClasses ? (client.currentCycleIndex ?? 0) : null,
+      sessions:        isSessions && !isClasses ? (numSessions || null) : null,
+      note:            note.trim() || null,
+      billingPeriodId: selectedPeriodId ?? null,
     })
     const cycleFee = isClasses && isSessions
       ? (client.classesPerCycle || 1) * (client.sessionRate || 0)
@@ -1671,6 +1728,17 @@ function PayView({ client, onBack, onClose, onSaved }) {
           <label className="form-label">Date received</label>
           <DatePickerInput value={paymentDate} onChange={setPaymentDate} />
         </div>
+
+        {billingPeriods.length > 1 && (
+          <div className="form-group">
+            <label className="form-label">Billing period</label>
+            <select className="form-input" value={selectedPeriodId || ''} onChange={e => setSelectedPeriodId(e.target.value)}>
+              {[...billingPeriods].reverse().map(p => (
+                <option key={p.id} value={p.id}>{periodPickerLabel(p)}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div className="form-group">
           <label className="form-label">Note (optional)</label>
