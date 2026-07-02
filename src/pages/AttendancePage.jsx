@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import * as XLSX from 'xlsx'
 import { getClients, getAttendance, markAttended, unmarkAttended, updateAttendanceExercises, recomputeClassCycleFields } from '../lib/firestore.js'
 import { DEFAULT_EXERCISES } from '../data/exercises.js'
 import { getInitials, avatarColor, parseDMY, formatDMY, getMonthWindow, getClassCycleInfo } from '../lib/utils.js'
@@ -36,7 +37,7 @@ export default function AttendancePage() {
 
   useEffect(() => {
     getClients()
-      .then(cs => setClients(cs.filter(c => c.status === 'active')))
+      .then(cs => setClients(cs))
   }, [])
 
   useEffect(() => {
@@ -112,6 +113,45 @@ export default function AttendancePage() {
   const prevMonth = () => setViewDate(new Date(year, month - 1, 1))
   const nextMonth = () => setViewDate(new Date(year, month + 1, 1))
 
+  const exportAttendance = async () => {
+    const monthStr = `${String(month + 1).padStart(2, '0')}-${year}`
+
+    const monthRecords = (c) =>
+      (clientRecordsMap[c.id] || []).filter(r => r.date?.slice(3) === monthStr)
+
+    const activeClients = clients.filter(c => c.status === 'active')
+    const pausedClients = clients.filter(c => c.status === 'paused')
+
+    // Active and Paused summary sheets — one row per client, just the count
+    const activeRows = activeClients.map(c => ({ Name: c.name, Sessions: monthRecords(c).length }))
+    const pausedRows = pausedClients.map(c => ({ Name: c.name, Sessions: monthRecords(c).length }))
+
+    // Detailed sheet — dates as rows, all clients as columns, ✓ marks + Total row
+    const allForDetail = [...activeClients, ...pausedClients]
+    const days = Array.from({ length: totalDays }, (_, i) => i + 1)
+    const totals = { Date: 'Total' }
+    const detailRows = days.map(d => {
+      const dateStr = `${String(d).padStart(2, '0')}-${monthStr}`
+      const [dd, mm, yy] = dateStr.split('-').map(Number)
+      const dayName = new Date(yy, mm - 1, dd).toLocaleDateString('default', { weekday: 'short' })
+      const row = { Date: `${d} ${dayName}` }
+      allForDetail.forEach(c => {
+        const attended = monthRecords(c).some(r => r.date === dateStr)
+        row[c.name] = attended ? '✓' : ''
+        totals[c.name] = (totals[c.name] || 0) + (attended ? 1 : 0)
+      })
+      return row
+    })
+    detailRows.push(totals)
+
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(activeRows), 'Active')
+    if (pausedRows.length > 0)
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pausedRows), 'Paused')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detailRows), 'Detailed')
+    XLSX.writeFile(wb, `Attendance_${monthLabel.replace(' ', '_')}.xlsx`)
+  }
+
   return (
     <>
       <div className="page-header">
@@ -122,7 +162,10 @@ export default function AttendancePage() {
       {/* Month navigation */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 16px 12px' }}>
         <button className="btn btn-ghost btn-icon" onClick={prevMonth}><ChevLeftIcon /></button>
-        <p style={{ fontWeight:600, fontSize:15 }}>{monthLabel}</p>
+        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+          <p style={{ fontWeight:600, fontSize:15 }}>{monthLabel}</p>
+          <button className="btn btn-ghost btn-icon" title="Export to Excel" onClick={exportAttendance}><ExportIcon /></button>
+        </div>
         <button className="btn btn-ghost btn-icon" onClick={nextMonth}><ChevRightIcon /></button>
       </div>
 
@@ -205,15 +248,25 @@ function DaySheet({ dateStr, clients, attendanceMap, clientRecordsMap, onToggle,
             {attended.size} client{attended.size !== 1 ? 's' : ''} attended
           </p>
           <div style={{ display:'flex', flexDirection:'column', maxHeight:'55vh', overflowY:'auto' }}>
-            {clients.map(c => {
+            {[...clients].sort((a, b) => {
+              if (a.status === b.status) return 0
+              return a.status === 'active' ? -1 : 1
+            }).map(c => {
+              const isActive      = c.status === 'active'
+              const isPast        = dayDate < new Date(new Date().setHours(0,0,0,0))
               const isAttended    = attended.has(c.id)
+              // Today/future: active only. Past: active always + non-active only if they attended
+              if (!isActive && (!isPast || !isAttended)) return null
               const startD        = parseDMY(c.startDate)
               const isBeforeStart = startD && startD > dayDate
+              if (isBeforeStart && !isAttended) return null
+              const isPaused      = !isActive
               const isClasses     = c.cycleType === 'classes'
               const weekAttended  = weekDates.filter(ds => attendanceMap[ds]?.has(c.id)).length
               const weekExpected  = !isClasses ? (c.membershipType || null) : null
               // Cycle stats — branch on cycleType
-              const cycleWindow   = !isClasses && c.startDate ? getMonthWindow(c.startDate, dateStr) : null
+              const cycleAnchor   = c.billingStartDate || c.startDate
+              const cycleWindow   = !isClasses && cycleAnchor ? getMonthWindow(cycleAnchor, formatDMY(new Date())) : null
               const classInfo     = isClasses ? getClassCycleInfo(c, clientRecordsMap[c.id] || []) : null
               const monthAttended = isClasses
                 ? (classInfo?.attendedThisCycle ?? 0)
@@ -230,11 +283,11 @@ function DaySheet({ dateStr, clients, attendanceMap, clientRecordsMap, onToggle,
               const isExpanded = expanded === c.id
               return (
                 <div key={c.id}
-                  style={{ borderBottom:'1px solid var(--border)', opacity: isBeforeStart ? 0.4 : 1 }}>
+                  style={{ borderBottom:'1px solid var(--border)', opacity: isPaused ? 0.6 : 1 }}>
                   <div style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 2px' }}>
                   {/* Tap avatar+name area to toggle attendance */}
-                  <div style={{ display:'flex', alignItems:'center', gap:12, flex:1, minWidth:0, cursor: isBeforeStart ? 'default' : 'pointer' }}
-                    onClick={() => !isBeforeStart && onToggle(c.id, dateStr)}>
+                  <div style={{ display:'flex', alignItems:'center', gap:12, flex:1, minWidth:0, cursor: isPaused ? 'default' : 'pointer' }}
+                    onClick={() => !isPaused && onToggle(c.id, dateStr)}>
                     <div className="avatar" style={{ background: avatarColor(c.name), width:34, height:34, fontSize:12, flexShrink:0 }}>
                       {getInitials(c.name)}
                     </div>
@@ -268,21 +321,19 @@ function DaySheet({ dateStr, clients, attendanceMap, clientRecordsMap, onToggle,
                     </div>
                   </div>
 
-                  {/* Exercise log button — only when attended */}
-                  {isAttended && !isBeforeStart && (
-                    <button
-                      onClick={e => { e.stopPropagation(); setExerciseClient(c) }}
-                      style={{ background: exCount > 0 ? 'var(--accent-light)' : 'transparent',
-                        border: `1.5px solid ${exCount > 0 ? '#C9C6F3' : 'var(--border)'}`,
-                        borderRadius:'var(--r-sm)', padding:'5px 8px', cursor:'pointer',
-                        display:'flex', alignItems:'center', gap:4,
-                        color: exCount > 0 ? 'var(--accent-text)' : 'var(--text-3)',
-                        flexShrink:0 }}
-                      title="Log exercises">
-                      <NotepadIcon />
-                      {exCount > 0 && <span style={{ fontSize:11, fontWeight:600 }}>{exCount}</span>}
-                    </button>
-                  )}
+                  {/* Exercise log button — always visible */}
+                  <button
+                    onClick={e => { e.stopPropagation(); setExerciseClient(c) }}
+                    style={{ background: exCount > 0 ? 'var(--accent-light)' : 'transparent',
+                      border: `1.5px solid ${exCount > 0 ? '#C9C6F3' : 'var(--border)'}`,
+                      borderRadius:'var(--r-sm)', padding:'5px 8px', cursor:'pointer',
+                      display:'flex', alignItems:'center', gap:4,
+                      color: exCount > 0 ? 'var(--accent-text)' : 'var(--text-3)',
+                      flexShrink:0 }}
+                    title="Log exercises">
+                    <NotepadIcon />
+                    {exCount > 0 && <span style={{ fontSize:11, fontWeight:600 }}>{exCount}</span>}
+                  </button>
 
                   {/* Attendance toggle circle */}
                   <div
@@ -565,7 +616,8 @@ function ClientCycleDotGrid({ cycleWindow, attendedDates, dateStr }) {
 }
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
-const TickIcon    = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+const TickIcon      = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
 const ChevLeftIcon  = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
 const ChevRightIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
 const NotepadIcon   = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+const ExportIcon    = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
