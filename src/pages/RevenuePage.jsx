@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react'
 import { getClients, getAllClientsPayments, deletePayment, recomputeClientPaymentFields } from '../lib/firestore.js'
-import { getInitials, avatarColor, parseDMY, formatINR } from '../lib/utils.js'
+import { getInitials, avatarColor, formatINR } from '../lib/utils.js'
 import PageLoader from '../components/PageLoader.jsx'
+import * as XLSX from 'xlsx'
 
 export default function RevenuePage() {
-  const [clients, setClients]   = useState([])
-  const [payments, setPayments] = useState([]) // [{ clientId, clientName, clientFee, ...paymentData }]
-  const [loading, setLoading]   = useState(true)
-  const [viewDate, setViewDate] = useState(new Date())
-  const [expanded, setExpanded] = useState(null) // clientId
+  const [clients, setClients]         = useState([])
+  const [payments, setPayments]       = useState([])
+  const [loading, setLoading]         = useState(true)
+  const [viewDate, setViewDate]       = useState(new Date())
+  const [expanded, setExpanded]       = useState(null)
 
   const now            = new Date()
   const year           = viewDate.getFullYear()
@@ -22,9 +23,12 @@ export default function RevenuePage() {
     const all    = await getClients()
     const active = all.filter(c => c.status === 'active' || c.status === 'paused')
     setClients(active)
-    const results = await getAllClientsPayments(active.map(c => c.id))
+    const ids = active.map(c => c.id)
+    const [paymentResults] = await Promise.all([
+      getAllClientsPayments(ids),
+    ])
     const flat = []
-    results.forEach(({ clientId, payments: ps }) => {
+    paymentResults.forEach(({ clientId, payments: ps }) => {
       const c = active.find(x => x.id === clientId)
       ps.forEach(p => flat.push({ ...p, clientId, clientName: c?.name || '', clientFee: c?.monthlyFee || 0 }))
     })
@@ -34,14 +38,10 @@ export default function RevenuePage() {
 
   useEffect(() => { load() }, [viewDate])
 
-  // Filter payments by calendar month (p.date DD-MM-YYYY → slice(3) = "MM-YYYY")
+  // Cash basis: attribute payment to the month it was received
   const monthPayments = payments.filter(p => p.date && p.date.slice(3) === monthStr)
 
   const collected = monthPayments.reduce((s, p) => s + (p.amount || 0), 0)
-  const expected  = clients
-    .filter(c => !c.billingType || c.billingType === 'monthly')
-    .reduce((s, c) => s + (c.monthlyFee || 0), 0)
-  const gap       = expected - collected
 
   // Group month payments by client
   const grouped = {}
@@ -58,6 +58,27 @@ export default function RevenuePage() {
     setPayments(ps => ps.filter(x => x.id !== p.id || x.clientId !== p.clientId))
   }
 
+  const exportToExcel = () => {
+    const makeRow = c => {
+      const clientCollected = monthPayments
+        .filter(p => p.clientId === c.id)
+        .reduce((s, p) => s + (p.amount || 0), 0)
+      return {
+        'Name':           c.name,
+        'Billing Type':   c.billingType === 'per_session' ? 'Per Session' : 'Monthly',
+        'Collected (₹)':  clientCollected,
+      }
+    }
+
+    const active = clients.filter(c => c.status === 'active').map(makeRow)
+    const paused = clients.filter(c => c.status === 'paused').map(makeRow)
+
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(active), 'Active')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(paused), 'Paused')
+    XLSX.writeFile(wb, `Revenue_${monthLabel.replace(' ', '_')}.xlsx`)
+  }
+
   if (loading) return <PageLoader label="Loading revenue…" />
 
   return (
@@ -65,7 +86,10 @@ export default function RevenuePage() {
       <div className="page-header">
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
           <h1 style={{ fontFamily:'Playfair Display, serif' }}>{monthLabel}</h1>
-          <div style={{ display:'flex', gap:2 }}>
+          <div style={{ display:'flex', gap:2, alignItems:'center' }}>
+            <button className="btn btn-ghost btn-icon" title="Export to Excel" onClick={exportToExcel}>
+              <ExportIcon />
+            </button>
             <button className="btn btn-ghost btn-icon"
               onClick={() => setViewDate(new Date(year, month - 1, 1))}>
               <ChevLeftIcon />
@@ -81,26 +105,13 @@ export default function RevenuePage() {
 
       <div className="section">
         {/* Summary band */}
-        <div style={{ background:'var(--surface)', borderRadius:16, border:'1px solid var(--border)', padding:'18px 20px', marginBottom:16 }}>
-          <div style={{ display:'flex', gap:0 }}>
-            {[
-              { label:'Collected', value: collected, color:'var(--teal)' },
-              { label:'Expected',  value: expected,  color:'var(--text)' },
-              { label:'Gap',       value: Math.abs(gap), color: gap > 0 ? '#B84C2A' : 'var(--teal)' },
-            ].map((stat, i, arr) => (
-              <div key={stat.label} style={{ flex:1, textAlign:'center', position:'relative' }}>
-                {i < arr.length - 1 && (
-                  <div style={{ position:'absolute', right:0, top:'10%', height:'80%', width:1, background:'var(--border)' }} />
-                )}
-                <p style={{ fontSize:18, fontWeight:700, color:stat.color, fontFamily:'Playfair Display, serif', lineHeight:1.2 }}>
-                  {formatINR(stat.value)}
-                </p>
-                <p style={{ fontSize:11, color:'var(--text-3)', fontWeight:500, marginTop:3, textTransform:'uppercase', letterSpacing:'0.6px' }}>
-                  {stat.label}
-                </p>
-              </div>
-            ))}
-          </div>
+        <div style={{ background:'var(--surface)', borderRadius:16, border:'1px solid var(--border)', padding:'18px 20px', marginBottom:16, textAlign:'center' }}>
+          <p style={{ fontSize:22, fontWeight:700, color:'var(--teal)', fontFamily:'Playfair Display, serif', lineHeight:1.2 }}>
+            {formatINR(collected)}
+          </p>
+          <p style={{ fontSize:10, color:'var(--text-3)', fontWeight:500, marginTop:3, textTransform:'uppercase', letterSpacing:'0.5px' }}>
+            Collected
+          </p>
         </div>
 
         {/* Payment rows grouped by client */}
@@ -177,3 +188,4 @@ export default function RevenuePage() {
 const ChevLeftIcon  = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
 const ChevRightIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
 const TrashIcon     = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+const ExportIcon    = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
