@@ -294,6 +294,9 @@ function DaySheet({ dateStr, clients, attendanceMap, clientRecordsMap, onToggle,
                     <div style={{ minWidth:0, flex:1 }}>
                       <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                         <p style={{ fontSize:14, fontWeight:500 }}>{c.name}</p>
+                        {isPaused && (
+                          <span style={{ fontSize:10, fontWeight:600, color:'var(--amber-text)', background:'var(--amber-light)', borderRadius:6, padding:'1px 6px', lineHeight:1.5, flexShrink:0 }}>Paused</span>
+                        )}
                         {/* Expand toggle */}
                         {cycleWindow && (
                           <button
@@ -559,7 +562,7 @@ function CycleAttendanceSummary({ clients, clientRecordsMap, viewDate }) {
           const pillColor = rate >= 85 ? 'var(--teal-text)'  : rate >= 60 ? 'var(--amber-text)'  : 'var(--coral-text)'
           const barColor  = rate >= 85 ? 'var(--teal)'       : rate >= 60 ? 'var(--amber)'        : 'var(--coral)'
           return (
-            <div key={c.id} style={{ background:'var(--surface)', borderRadius:12, border:'1px solid var(--border)', padding:'10px 12px', boxShadow:'var(--shadow-sm)' }}>
+            <div key={c.id} style={{ background:'var(--surface)', borderRadius:12, border:'1px solid var(--border)', borderLeft:`3px solid ${barColor}`, padding:'10px 12px', boxShadow:'var(--shadow-sm)' }}>
               <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
                 <div className="avatar" style={{ background:avatarColor(c.name), width:28, height:28, fontSize:10, flexShrink:0 }}>
                   {getInitials(c.name)}

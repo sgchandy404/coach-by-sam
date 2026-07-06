@@ -171,6 +171,7 @@ body {
 .btn-sm   { padding: 7px 16px; font-size: 13px; }
 .btn-full { width: 100%; }
 .btn-icon { padding: 8px; border-radius: var(--r-sm); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
 
 /* ── FAB ── */
 .fab {
@@ -251,9 +252,9 @@ body {
 
 /* ── Modal ── */
 .modal-backdrop {
-  position: fixed; inset: 0; background: rgba(20,16,10,0.45);
+  position: fixed; inset: 0; background: rgba(20,16,10,0.55);
   z-index: 200; display: flex; align-items: flex-end;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(8px);
 }
 .modal {
   background: var(--surface);
@@ -310,6 +311,20 @@ body {
 @keyframes unpaid-pulse {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.35; }
+}
+@keyframes toast-slide-up {
+  from { transform: translateY(20px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.toast {
+  position: fixed; bottom: calc(80px + env(safe-area-inset-bottom)); left: 50%;
+  transform: translateX(-50%);
+  background: #18160F; color: #fff;
+  padding: 10px 18px; border-radius: 100px;
+  font-size: 13px; font-weight: 600; white-space: nowrap;
+  z-index: 400; pointer-events: none;
+  animation: toast-slide-up 0.22s ease;
+  box-shadow: 0 4px 16px rgba(20,16,10,0.25);
 }
 
 /* ── Attendance calendar ── */

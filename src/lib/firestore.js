@@ -172,7 +172,17 @@ export const recomputeClientPaymentFields = async (clientId, fee, periodStartDat
   const mostRecent = allPayments[0] || null
 
   if (periods.length > 0) {
-    const activePeriod = [...periods].reverse().find(p => !p.endDate) || periods[periods.length - 1]
+    const activePeriod = [...periods].reverse().find(p => !p.endDate)
+    if (!activePeriod) {
+      // All periods closed — nothing to recompute against; bail out safely
+      await updateDoc(doc(db, 'clients', clientId), {
+        balance: 0, carryForwardAmount: 0,
+        lastPaidCycleStart: mostRecent?.cycleStart ?? null,
+        lastPaidCycleEnd:   mostRecent?.cycleEnd   ?? null,
+        lastPaidCycleIndex: null,
+      })
+      return
+    }
     // Dynamically compute carry-forward from all closed periods
     newCarryForward = periods
       .filter(p => p.endDate)

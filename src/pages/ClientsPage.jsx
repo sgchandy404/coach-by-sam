@@ -88,6 +88,9 @@ export default function ClientsPage({ clientId, setClientId, setTab, navResetKey
   const [loading, setLoading]       = useState(true)
   const [paymentModal, setPaymentModal] = useState(null) // { client }
   const [profile, setProfile]           = useState(null) // selected client for full-screen view
+  const [toast, setToast]               = useState(null)
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2500) }
 
   const load = async () => {
     const cs = await getClients()
@@ -145,6 +148,7 @@ export default function ClientsPage({ clientId, setClientId, setTab, navResetKey
   if (profile !== null) {
     return (
       <>
+        {toast && <div className="toast">{toast}</div>}
         <ClientProfile
           client={profile}
           onBack={() => setProfile(null)}
@@ -156,6 +160,7 @@ export default function ClientsPage({ clientId, setClientId, setTab, navResetKey
           <ManageClientModal client={managing} onClose={() => setManaging(null)}
             initialView={managing._initialView || 'menu'}
             onStatusChange={handleStatusChange} onDelete={handleDelete}
+            onToast={showToast}
             onEdit={async (data) => {
               await updateClient(managing.id, data)
               const refreshed = await getClients()
@@ -173,6 +178,7 @@ export default function ClientsPage({ clientId, setClientId, setTab, navResetKey
               setClients(cs => cs.map(x => x.id === updated.id ? updated : x))
               setProfile(updated)
               setPaymentModal({ client: updated })
+              showToast('Payment recorded ✓')
             }}
           />
         )}
@@ -182,6 +188,7 @@ export default function ClientsPage({ clientId, setClientId, setTab, navResetKey
 
   return (
     <>
+      {toast && <div className="toast">{toast}</div>}
       <div className="page-header" style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
         <div>
           <h1>Clients</h1>
@@ -355,6 +362,7 @@ export default function ClientsPage({ clientId, setClientId, setTab, navResetKey
       {managing && (
         <ManageClientModal client={managing} onClose={() => setManaging(null)}
           onStatusChange={handleStatusChange} onDelete={handleDelete}
+          onToast={showToast}
           onEdit={async (data) => { await updateClient(managing.id, data); await load(); setManaging(null) }} />
       )}
       {paymentModal && (
@@ -441,6 +449,40 @@ function ClientProfile({ client: initialClient, onBack, onManage, onEdit, onPaym
     setFetching(true)
     Promise.all([getPayments(client.id), getAttendance(client.id), getBillingPeriods(client.id)]).then(([pays, atts, periods]) => {
       setPayments(pays); setAttendance(atts); setBillingPeriods(periods); setFetching(false)
+
+      // Silent balance recompute: if billing periods exist, compute expected balance
+      // and trigger recompute if stored value is stale.
+      if (periods.length === 0) return
+      const activePeriod = [...periods].reverse().find(p => !p.endDate) || periods[periods.length - 1]
+      const pfp = (period) => {
+        const s = parseDMY(period.startDate)
+        const e = period.endDate ? parseDMY(period.endDate) : null
+        return pays.filter(p => p.billingPeriodId ? p.billingPeriodId === period.id
+          : (() => { const d = parseDMY(p.date); return d && s && d >= s && (!e || d < e) })())
+      }
+      const carry = periods.filter(p => p.endDate).reduce((sum, period) => {
+        const fee = period.billingType === 'monthly'
+          ? (period.monthlyFee || 0)
+          : (period.classesPerCycle || 0) * (period.sessionRate || 0)
+        if (!fee) return sum
+        const paid = pfp(period).reduce((s, p) => s + (p.amount || 0), 0)
+        return sum + Math.max(0, fee - paid)
+      }, 0)
+      const activePaid = pfp(activePeriod).reduce((s, p) => s + (p.amount || 0), 0)
+      const isClasses  = client.cycleType === 'classes'
+      const isSessions = client.billingType === 'per_session'
+      const activeFee  = activePeriod.billingType === 'monthly'
+        ? (activePeriod.monthlyFee || 0)
+        : (activePeriod.classesPerCycle || 0) * (activePeriod.sessionRate || 0)
+      const expectedBalance = activePaid - (activeFee + carry)
+      if (expectedBalance !== (client.balance ?? 0) || carry !== (client.carryForwardAmount ?? 0)) {
+        recomputeClientPaymentFields(client.id, activeFee, activePeriod.startDate, 0)
+          .then(() => getClients())
+          .then(cs => {
+            const updated = cs.find(c => c.id === client.id)
+            if (updated) { setClientLocal(updated); onEdit && onEdit(updated) }
+          })
+      }
     })
   }, [client.id, client.billingStartDate])
 
@@ -584,17 +626,17 @@ function ClientProfile({ client: initialClient, onBack, onManage, onEdit, onPaym
 
           {/* Payment card */}
           <div className="card">
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom: displayBalance != null && displayBalance !== 0 ? 6 : 10 }}>
               <span style={{ fontSize:12, fontWeight:600, padding:'3px 10px', borderRadius:100,
                 background: pStyle.color + '22', color: pStyle.color, border:`1px solid ${pStyle.color}55` }}>
                 {pStyle.label}
               </span>
-              {displayBalance != null && displayBalance !== 0 && (
-                <span style={{ fontSize:13, fontWeight:700, color: displayBalance >= 0 ? 'var(--teal)' : 'var(--coral)' }}>
-                  {displayBalance >= 0 ? `+${formatINR(displayBalance)}` : `−${formatINR(Math.abs(displayBalance))}`}
-                </span>
-              )}
             </div>
+            {displayBalance != null && displayBalance !== 0 && (
+              <p style={{ fontSize:26, fontWeight:700, color: displayBalance >= 0 ? 'var(--teal)' : 'var(--coral)', marginBottom:10, letterSpacing:'-0.5px' }}>
+                {displayBalance >= 0 ? `+${formatINR(displayBalance)}` : `−${formatINR(Math.abs(displayBalance))}`}
+              </p>
+            )}
             <button className="btn btn-primary btn-full" onClick={() => onPayment(client)}>
               Record payment
             </button>
@@ -844,7 +886,7 @@ function AddClientModal({ onClose, onSave }) {
 }
 
 // ── Manage client modal ───────────────────────────────────────────────────────
-function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit, initialView = 'menu' }) {
+function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit, onToast, initialView = 'menu' }) {
   const [view, setView]             = useState(initialView)
   const [name, setName]             = useState(client.name)
   const [goal, setGoal]             = useState(client.goal || '')
@@ -864,18 +906,39 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit, 
   const [saving, setSaving]         = useState(false)
   const [newPeriodStart, setNewPeriodStart] = useState(formatDMY(new Date()))
   const [carryForwardChoice, setCarryForwardChoice] = useState(null) // null | 'carry' | 'writeoff'
+  const [outstanding, setOutstanding] = useState(0)
 
-  // Compute outstanding balance from current period when entering change-billing view
-  const outstanding = (() => {
-    const isClasses  = client.cycleType === 'classes'
-    const isSessions = client.billingType === 'per_session'
-    if (isClasses && isSessions) {
-      const totalPaid     = (client.balance ?? 0) + (client.classesPerCycle ?? 0) * (client.sessionRate ?? 0)
-      const attendedValue = (client.attendedThisCycle ?? 0) * (client.sessionRate ?? 0)
-      return Math.max(0, attendedValue - totalPaid)
-    }
-    return Math.max(0, -(client.balance ?? 0))
-  })()
+  // When entering change-billing view, compute outstanding from actual billing periods + payments
+  useEffect(() => {
+    if (view !== 'change-billing') return
+    Promise.all([getBillingPeriods(client.id), getPayments(client.id)]).then(([periods, pays]) => {
+      if (periods.length === 0) {
+        // No periods — fall back to client.balance
+        const isClasses  = client.cycleType === 'classes'
+        const isSessions = client.billingType === 'per_session'
+        if (isClasses && isSessions) {
+          const totalPaid     = (client.balance ?? 0) + (client.classesPerCycle ?? 0) * (client.sessionRate ?? 0)
+          const attendedValue = (client.attendedThisCycle ?? 0) * (client.sessionRate ?? 0)
+          setOutstanding(Math.max(0, attendedValue - totalPaid))
+        } else {
+          setOutstanding(Math.max(0, -(client.balance ?? 0)))
+        }
+        return
+      }
+      const activePeriod = [...periods].reverse().find(p => !p.endDate) || periods[periods.length - 1]
+      const pfp = (period) => {
+        const s = parseDMY(period.startDate)
+        const e = period.endDate ? parseDMY(period.endDate) : null
+        return pays.filter(p => p.billingPeriodId ? p.billingPeriodId === period.id
+          : (() => { const d = parseDMY(p.date); return d && s && d >= s && (!e || d < e) })())
+      }
+      const activeFee = activePeriod.billingType === 'monthly'
+        ? (activePeriod.monthlyFee || 0)
+        : (activePeriod.classesPerCycle || 0) * (activePeriod.sessionRate || 0)
+      const activePaid = pfp(activePeriod).reduce((s, p) => s + (p.amount || 0), 0)
+      setOutstanding(Math.max(0, activeFee - activePaid))
+    })
+  }, [view, client.id])
 
   const loadReport = async () => {
     const [prs, attrs, measures, attendance] = await Promise.all([
@@ -1060,6 +1123,7 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit, 
                 sessionRate: billingType === 'per_session' ? (Number(sessionRate) || null) : null,
               })
               await recomputeClientPaymentFields(client.id, newFee || 0, client.billingStartDate || client.startDate, client.carryForwardAmount ?? 0)
+              onToast?.('Profile updated ✓')
               setSaving(false)
             }}>
             {saving ? 'Saving…' : 'Save changes'}
@@ -1142,7 +1206,11 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit, 
           </div>
         )}
         <div className="form-group">
-          <label className="form-label">New period starts on</label>
+          <label className="form-label">New period starts on
+            <span style={{ fontWeight:400, textTransform:'none', letterSpacing:0, color:'var(--text-3)', marginLeft:6 }}>
+              — current period closes on this date
+            </span>
+          </label>
           <DatePickerInput value={newPeriodStart} onChange={setNewPeriodStart} />
         </div>
 
@@ -1211,7 +1279,8 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit, 
                 } else {
                   // No billingPeriods yet — write the implicit current period before closing it
                   const implicitStart = client.billingStartDate || client.startDate
-                  if (implicitStart) {
+                  // Skip if same day — would produce a zero-length period
+                  if (implicitStart && implicitStart !== newPeriodStart) {
                     await addBillingPeriod(client.id, {
                       startDate: implicitStart, endDate: newPeriodStart,
                       cycleType: client.cycleType, membershipType: client.membershipType,
@@ -1241,6 +1310,7 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit, 
                 }),
               })
               await recomputeClientPaymentFields(client.id, newCycleFee, newPeriodStart, carryAmt)
+              onToast?.('Billing updated ✓')
               setSaving(false)
             }}>
             {saving ? 'Saving…' : 'Save & start new period'}
@@ -1654,7 +1724,10 @@ function PayView({ client, onBack, onClose, onSaved }) {
   const numSessions = Number(sessions) || 0
   const numAmount   = Number(amount) || 0
   const unitRate    = client.sessionRate || 0
-  const isPartial   = client.billingType === 'monthly' && client.monthlyFee && numAmount > 0 && numAmount < client.monthlyFee
+  const cycleFee    = client.billingType === 'per_session'
+    ? (client.classesPerCycle || 0) * (client.sessionRate || 0)
+    : (client.monthlyFee || 0)
+  const isPartial   = cycleFee > 0 && numAmount > 0 && numAmount < cycleFee
 
   const handleSave = async () => {
     setSaving(true)
