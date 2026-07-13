@@ -440,7 +440,7 @@ function ClientProfile({ client: initialClient, onBack, onManage, onEdit, onPaym
       ? (client.classesPerCycle || 1) * (client.sessionRate || 0)
       : (client.monthlyFee || 0)
     await deletePayment(client.id, p.id)
-    await recomputeClientPaymentFields(client.id, cycleFee, client.billingStartDate || client.startDate, client.carryForwardAmount ?? 0)
+    await recomputeClientPaymentFields(client.id, cycleFee, client.billingStartDate || client.startDate)
     setPayments(ps => ps.filter(x => x.id !== p.id))
     setDeletingPayment(null)
   }
@@ -460,23 +460,14 @@ function ClientProfile({ client: initialClient, onBack, onManage, onEdit, onPaym
         return pays.filter(p => p.billingPeriodId ? p.billingPeriodId === period.id
           : (() => { const d = parseDMY(p.date); return d && s && d >= s && (!e || d < e) })())
       }
-      const carry = periods.filter(p => p.endDate).reduce((sum, period) => {
-        const fee = period.billingType === 'monthly'
-          ? (period.monthlyFee || 0)
-          : (period.classesPerCycle || 0) * (period.sessionRate || 0)
-        if (!fee) return sum
-        const paid = pfp(period).reduce((s, p) => s + (p.amount || 0), 0)
-        return sum + Math.max(0, fee - paid)
-      }, 0)
+      const openingBalance = activePeriod.openingBalance ?? activePeriod.carryForwardAmount ?? 0
       const activePaid = pfp(activePeriod).reduce((s, p) => s + (p.amount || 0), 0)
-      const isClasses  = client.cycleType === 'classes'
-      const isSessions = client.billingType === 'per_session'
       const activeFee  = activePeriod.billingType === 'monthly'
         ? (activePeriod.monthlyFee || 0)
         : (activePeriod.classesPerCycle || 0) * (activePeriod.sessionRate || 0)
-      const expectedBalance = activePaid - (activeFee + carry)
-      if (expectedBalance !== (client.balance ?? 0) || carry !== (client.carryForwardAmount ?? 0)) {
-        recomputeClientPaymentFields(client.id, activeFee, activePeriod.startDate, 0)
+      const expectedBalance = activePaid - (activeFee + openingBalance)
+      if (expectedBalance !== (client.balance ?? 0) || openingBalance !== (client.openingBalance ?? client.carryForwardAmount ?? 0)) {
+        recomputeClientPaymentFields(client.id, activeFee, activePeriod.startDate)
           .then(() => getClients())
           .then(cs => {
             const updated = cs.find(c => c.id === client.id)
@@ -693,10 +684,10 @@ function ClientProfile({ client: initialClient, onBack, onManage, onEdit, onPaym
                       <div style={{ borderLeft:'3px solid var(--accent)', paddingLeft:10, marginBottom:8, paddingTop:4, paddingBottom:4 }}>
                         <p style={{ fontSize:12, fontWeight:600, color:'var(--text)', lineHeight:1.5 }}>{periodLabel(period)}</p>
                       </div>
-                      {period.carryForwardAmount > 0 && (
+                      {(period.openingBalance > 0 || period.carryForwardAmount > 0) && (
                         <div style={{ paddingLeft:13, marginBottom:6 }}>
                           <span style={{ fontSize:12, color:'var(--amber-text)', fontStyle:'italic' }}>
-                            Carried forward: {formatINR(period.carryForwardAmount)}
+                            Opening balance: {formatINR(period.openingBalance ?? period.carryForwardAmount)}
                           </span>
                         </div>
                       )}
@@ -905,7 +896,7 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit, 
   const [attendanceRecords, setAttendanceRecords] = useState([])
   const [saving, setSaving]         = useState(false)
   const [newPeriodStart, setNewPeriodStart] = useState(formatDMY(new Date()))
-  const [carryForwardChoice, setCarryForwardChoice] = useState(null) // null | 'carry' | 'writeoff'
+  const [debtConfirmed, setDebtConfirmed] = useState(null) // null | true | false
   const [outstanding, setOutstanding] = useState(0)
 
   // When entering change-billing view, compute outstanding from actual billing periods + payments
@@ -1122,7 +1113,7 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit, 
                 monthlyFee: newFee,
                 sessionRate: billingType === 'per_session' ? (Number(sessionRate) || null) : null,
               })
-              await recomputeClientPaymentFields(client.id, newFee || 0, client.billingStartDate || client.startDate, client.carryForwardAmount ?? 0)
+              await recomputeClientPaymentFields(client.id, newFee || 0, client.billingStartDate || client.startDate)
               onToast?.('Profile updated ✓')
               setSaving(false)
             }}>
@@ -1214,33 +1205,33 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit, 
           <DatePickerInput value={newPeriodStart} onChange={setNewPeriodStart} />
         </div>
 
-        {/* Outstanding balance warning — shown when current period has unpaid balance */}
+        {/* Outstanding debt question — shown when current period has unpaid balance */}
         {outstanding > 0 && (
           <div style={{ background:'var(--amber-light)', border:'1px solid #FAC775', borderRadius:'var(--r-sm)', padding:'12px 14px', marginTop:4 }}>
-            <p style={{ fontSize:13, fontWeight:600, color:'var(--amber-text)', marginBottom:6 }}>
-              {formatINR(outstanding)} outstanding from current period
+            <p style={{ fontSize:13, fontWeight:600, color:'var(--amber-text)', marginBottom:4 }}>
+              Does this client still owe {formatINR(outstanding)} from their current period?
             </p>
             <p style={{ fontSize:12, color:'var(--amber-text)', marginBottom:10, lineHeight:1.5 }}>
               {client.cycleType === 'classes'
-                ? `${client.attendedThisCycle ?? 0} of ${client.classesPerCycle ?? 0} classes attended this cycle. Changing billing will reset the session counter. Settle the outstanding balance or carry it forward.`
-                : `Closing this period early does not issue an automatic refund or credit.`}
+                ? `${client.attendedThisCycle ?? 0} of ${client.classesPerCycle ?? 0} classes attended this cycle.`
+                : `This amount was not paid before the billing change.`}
             </p>
             <div style={{ display:'flex', gap:8 }}>
               <button type="button"
                 style={{ flex:1, padding:'8px 0', borderRadius:'var(--r-sm)', fontSize:13, fontWeight:600, cursor:'pointer', border:'1.5px solid',
-                  background: carryForwardChoice === 'carry' ? 'var(--accent)' : 'transparent',
-                  color:      carryForwardChoice === 'carry' ? '#fff' : 'var(--amber-text)',
-                  borderColor: carryForwardChoice === 'carry' ? 'var(--accent)' : '#FAC775' }}
-                onClick={() => setCarryForwardChoice('carry')}>
-                Carry forward
+                  background: debtConfirmed === true ? 'var(--accent)' : 'transparent',
+                  color:      debtConfirmed === true ? '#fff' : 'var(--amber-text)',
+                  borderColor: debtConfirmed === true ? 'var(--accent)' : '#FAC775' }}
+                onClick={() => setDebtConfirmed(true)}>
+                Yes, still owing
               </button>
               <button type="button"
                 style={{ flex:1, padding:'8px 0', borderRadius:'var(--r-sm)', fontSize:13, fontWeight:600, cursor:'pointer', border:'1.5px solid',
-                  background: carryForwardChoice === 'writeoff' ? 'var(--coral)' : 'transparent',
-                  color:      carryForwardChoice === 'writeoff' ? '#fff' : 'var(--coral)',
-                  borderColor: carryForwardChoice === 'writeoff' ? 'var(--coral)' : 'var(--coral)' }}
-                onClick={() => setCarryForwardChoice(c => c === 'writeoff' ? null : 'writeoff')}>
-                {carryForwardChoice === 'writeoff' ? '✓ Write off — confirm' : 'Write off'}
+                  background: debtConfirmed === false ? 'var(--teal)' : 'transparent',
+                  color:      debtConfirmed === false ? '#fff' : 'var(--text-2)',
+                  borderColor: debtConfirmed === false ? 'var(--teal)' : 'var(--border-mid)' }}
+                onClick={() => setDebtConfirmed(false)}>
+                No, write off
               </button>
             </div>
           </div>
@@ -1249,7 +1240,7 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit, 
         <div style={{ display:'flex', gap:10, marginTop:8 }}>
           <button className="btn btn-outline btn-full" onClick={() => setView('menu')}>Back</button>
           <button className="btn btn-primary btn-full"
-            disabled={saving || (outstanding > 0 && carryForwardChoice === null)}
+            disabled={saving || (outstanding > 0 && debtConfirmed === null)}
             onClick={async () => {
               setSaving(true)
               const newCycleType   = cycleType
@@ -1261,14 +1252,14 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit, 
               const newCycleFee    = newBillingType === 'per_session' && newClasses
                 ? newClasses * (newSessionRate || 0)
                 : (newMonthlyFee || 0)
-              const carryAmt = carryForwardChoice === 'carry' ? outstanding : 0
+              const openingBal = debtConfirmed === true ? outstanding : 0
               const periods  = await getBillingPeriods(client.id)
               const active   = periods.find(p => !p.endDate)
               const newPeriodData = {
                 cycleType: newCycleType, membershipType: newMembership,
                 classesPerCycle: newClasses, billingType: newBillingType,
                 monthlyFee: newMonthlyFee, sessionRate: newSessionRate,
-                carryForwardAmount: carryAmt, label: null,
+                openingBalance: openingBal, label: null,
               }
               if (active && active.startDate === newPeriodStart) {
                 // Same-day change — update the active period in place instead of closing + reopening
@@ -1286,7 +1277,7 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit, 
                       cycleType: client.cycleType, membershipType: client.membershipType,
                       classesPerCycle: client.classesPerCycle, billingType: client.billingType,
                       monthlyFee: client.monthlyFee, sessionRate: client.sessionRate,
-                      carryForwardAmount: 0, label: null,
+                      openingBalance: 0, label: null,
                     })
                   }
                 }
@@ -1299,6 +1290,7 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit, 
                 classesPerCycle: newClasses, billingType: newBillingType,
                 monthlyFee: newMonthlyFee, sessionRate: newSessionRate,
                 billingStartDate: newPeriodStart, startDate: newPeriodStart,
+                openingBalance: openingBal,
                 ...(newCycleType === 'classes' ? {
                   currentCycleStartDate: newPeriodStart,
                   currentCycleIndex: 0,
@@ -1309,7 +1301,7 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit, 
                   attendedThisCycle: null,
                 }),
               })
-              await recomputeClientPaymentFields(client.id, newCycleFee, newPeriodStart, carryAmt)
+              await recomputeClientPaymentFields(client.id, newCycleFee, newPeriodStart)
               onToast?.('Billing updated ✓')
               setSaving(false)
             }}>
@@ -1753,7 +1745,7 @@ function PayView({ client, onBack, onClose, onSaved }) {
     const cycleFee = isClasses && isSessions
       ? (client.classesPerCycle || 1) * (client.sessionRate || 0)
       : (client.monthlyFee || 0)
-    await recomputeClientPaymentFields(client.id, cycleFee, client.billingStartDate || client.startDate, client.carryForwardAmount ?? 0)
+    await recomputeClientPaymentFields(client.id, cycleFee, client.billingStartDate || client.startDate)
     await onSaved()
     setSaving(false)
   }
@@ -1849,7 +1841,7 @@ function HistoryView({ client, onBack, onClose, onChanged }) {
     const cycleFee   = isClasses && isSessions
       ? (client.classesPerCycle || 1) * (client.sessionRate || 0)
       : (client.monthlyFee || 0)
-    await recomputeClientPaymentFields(client.id, cycleFee, client.billingStartDate || client.startDate, client.carryForwardAmount ?? 0)
+    await recomputeClientPaymentFields(client.id, cycleFee, client.billingStartDate || client.startDate)
     setPayments(ps => ps.filter(x => x.id !== p.id))
     setDeleting(null)
     onChanged()

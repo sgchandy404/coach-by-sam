@@ -150,11 +150,10 @@ export const closeBillingPeriod = (clientId, periodId, endDate) =>
 export const updateBillingPeriod = (clientId, periodId, data) =>
   updateDoc(doc(db, 'clients', clientId, 'billingPeriods', periodId), data)
 
-// Recomputes balance and carryForwardAmount from actual payment data.
-// When billing periods exist, carry-forward is derived dynamically from unpaid closed periods
-// so that adding/deleting payments for old periods is always reflected correctly.
+// Recomputes balance from actual payment data.
+// Uses openingBalance on the active billing period as the explicit debt from prior arrangements.
 // Falls back to date-range filtering for clients with no billing periods.
-export const recomputeClientPaymentFields = async (clientId, fee, periodStartDate = null, carryForwardAmount = 0) => {
+export const recomputeClientPaymentFields = async (clientId, fee, periodStartDate = null) => {
   const [allPayments, periods] = await Promise.all([getPayments(clientId), getBillingPeriods(clientId)])
 
   const paymentsForPeriod = (period) => {
@@ -167,33 +166,23 @@ export const recomputeClientPaymentFields = async (clientId, fee, periodStartDat
     })
   }
 
-  let newCarryForward = carryForwardAmount
   let activePayments = []
+  let openingBalance = 0
   const mostRecent = allPayments[0] || null
 
   if (periods.length > 0) {
     const activePeriod = [...periods].reverse().find(p => !p.endDate)
     if (!activePeriod) {
-      // All periods closed — nothing to recompute against; bail out safely
+      // All periods closed — bail out safely
       await updateDoc(doc(db, 'clients', clientId), {
-        balance: 0, carryForwardAmount: 0,
+        balance: 0, openingBalance: 0,
         lastPaidCycleStart: mostRecent?.cycleStart ?? null,
         lastPaidCycleEnd:   mostRecent?.cycleEnd   ?? null,
         lastPaidCycleIndex: null,
       })
       return
     }
-    // Dynamically compute carry-forward from all closed periods
-    newCarryForward = periods
-      .filter(p => p.endDate)
-      .reduce((carry, period) => {
-        const periodFee = period.billingType === 'monthly'
-          ? (period.monthlyFee || 0)
-          : (period.classesPerCycle || 0) * (period.sessionRate || 0)
-        if (!periodFee) return carry
-        const paid = paymentsForPeriod(period).reduce((s, p) => s + (p.amount || 0), 0)
-        return carry + Math.max(0, periodFee - paid)
-      }, 0)
+    openingBalance = activePeriod.openingBalance ?? activePeriod.carryForwardAmount ?? 0
     activePayments = paymentsForPeriod(activePeriod)
   } else {
     // No billing periods — fall back to date-range filtering from periodStartDate
@@ -204,14 +193,13 @@ export const recomputeClientPaymentFields = async (clientId, fee, periodStartDat
   }
 
   const activePaid = activePayments.reduce((s, p) => s + (p.amount || 0), 0)
-  // lastPaidCycleIndex scoped to active period so billing resets don't pollute it
   const lastPaidCycleIndex = activePayments.reduce((max, p) =>
     p.cycleIndex != null ? Math.max(max, p.cycleIndex) : max, -1)
 
-  const balance = activePaid - ((fee || 0) + newCarryForward)
+  const balance = activePaid - ((fee || 0) + openingBalance)
   await updateDoc(doc(db, 'clients', clientId), {
     balance,
-    carryForwardAmount:  newCarryForward,
+    openingBalance,
     lastPaidCycleStart:  mostRecent?.cycleStart ?? null,
     lastPaidCycleEnd:    mostRecent?.cycleEnd   ?? null,
     lastPaidCycleIndex:  lastPaidCycleIndex >= 0 ? lastPaidCycleIndex : null,

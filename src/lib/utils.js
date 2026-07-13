@@ -106,14 +106,14 @@ export const getPaymentStatus = (client) => {
   if (client.cycleType === 'classes') {
     const currentIndex  = client.currentCycleStartDate ? (client.currentCycleIndex ?? 0) : 0
     const lastPaidIndex = client.lastPaidCycleIndex ?? -1
-    const balance       = client.balance ?? 0
-    const carryForward  = client.carryForwardAmount ?? 0
-    // If balance is non-negative and no carry-forward, the current cycle is fully settled
-    if (balance >= 0 && carryForward === 0) return 'paid'
-    const cyclePaid    = lastPaidIndex >= currentIndex
-    const carrySettled = carryForward === 0 || balance >= 0
-    if (cyclePaid && carrySettled) return 'paid'
-    if (cyclePaid || carryForward > 0) return 'partial'
+    const balance        = client.balance ?? 0
+    const openingBalance = client.openingBalance ?? client.carryForwardAmount ?? 0
+    // If balance is non-negative and no opening balance debt, fully settled
+    if (balance >= 0 && openingBalance === 0) return 'paid'
+    const cyclePaid      = lastPaidIndex >= currentIndex
+    const debtSettled    = openingBalance === 0 || balance >= 0
+    if (cyclePaid && debtSettled) return 'paid'
+    if (cyclePaid || openingBalance > 0) return 'partial'
     return 'unpaid'
   }
 
