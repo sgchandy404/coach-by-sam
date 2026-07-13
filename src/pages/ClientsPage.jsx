@@ -693,15 +693,22 @@ function ClientProfile({ client: initialClient, onBack, onManage, onEdit, onPaym
                       )}
                       {pps.length === 0 ? (
                         <p style={{ fontSize:12, color:'var(--text-3)', paddingLeft:13 }}>No payments in this period.</p>
-                      ) : (
-                        pps.map(p => (
-                          <div key={p.id} style={{ display:'flex', alignItems:'center', gap:6, paddingLeft:13, marginBottom:4 }}>
-                            <span style={{ fontSize:13, fontWeight:600, color:'var(--teal)' }}>{formatINR(p.amount)}</span>
-                            <span style={{ fontSize:12, color:'var(--text-3)' }}>on {p.date}</span>
-                            <span style={{ fontSize:12, color:'var(--teal)' }}>✓</span>
-                          </div>
-                        ))
+                      ) : null}
+                      {period.debtResolution && (
+                        <p style={{ fontSize:12, fontStyle:'italic', paddingLeft:13, marginTop: pps.length === 0 ? 2 : 4,
+                          color: period.debtResolution.type === 'written_off' ? 'var(--text-3)' : 'var(--amber-text)' }}>
+                          {period.debtResolution.type === 'written_off'
+                            ? `Written off on ${period.debtResolution.on}`
+                            : `Carried forward on ${period.debtResolution.on}`}
+                        </p>
                       )}
+                      {pps.length > 0 && pps.map(p => (
+                        <div key={p.id} style={{ display:'flex', alignItems:'center', gap:6, paddingLeft:13, marginBottom:4 }}>
+                          <span style={{ fontSize:13, fontWeight:600, color:'var(--teal)' }}>{formatINR(p.amount)}</span>
+                          <span style={{ fontSize:12, color:'var(--text-3)' }}>on {p.date}</span>
+                          <span style={{ fontSize:12, color:'var(--teal)' }}>✓</span>
+                        </div>
+                      ))}
                     </div>
                   )
                 })}
@@ -1171,7 +1178,7 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit, 
         <div className="form-group">
           <label className="form-label">Billing type</label>
           <div style={{ display:'flex', gap:8 }}>
-            {[['monthly','Monthly fee'],['per_session','Per session']].map(([val, lbl]) => (
+            {[['monthly', cycleType === 'classes' ? 'Per cycle' : 'Monthly fee'],['per_session','Per session']].map(([val, lbl]) => (
               <button key={val} type="button" onClick={() => setBillingType(val)}
                 style={{ flex:1, padding:'9px 0', borderRadius:'var(--r-sm)', fontSize:13, fontWeight:600, cursor:'pointer', border:'1.5px solid',
                   background: billingType === val ? 'var(--accent)' : 'transparent',
@@ -1184,7 +1191,7 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit, 
         </div>
         {billingType === 'monthly' && (
           <div className="form-group">
-            <label className="form-label">Monthly fee (₹)</label>
+            <label className="form-label">{cycleType === 'classes' ? 'Per cycle fee (₹)' : 'Monthly fee (₹)'}</label>
             <input className="form-input" type="text" inputMode="numeric" placeholder="e.g. 5000"
               value={monthlyFee} onChange={e => setMonthlyFee(e.target.value)} />
           </div>
@@ -1261,12 +1268,22 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit, 
                 monthlyFee: newMonthlyFee, sessionRate: newSessionRate,
                 openingBalance: openingBal, label: null,
               }
+              const resolutionDate = formatDMY(new Date())
               if (active && active.startDate === newPeriodStart) {
                 // Same-day change — update the active period in place instead of closing + reopening
                 await updateBillingPeriod(client.id, active.id, newPeriodData)
               } else {
                 if (active) {
                   await closeBillingPeriod(client.id, active.id, newPeriodStart)
+                  // Stamp debt resolution on the now-closed period if there was outstanding
+                  if (outstanding > 0) {
+                    await updateBillingPeriod(client.id, active.id, {
+                      debtResolution: {
+                        type: debtConfirmed ? 'carried_forward' : 'written_off',
+                        on: resolutionDate,
+                      }
+                    })
+                  }
                 } else {
                   // No billingPeriods yet — write the implicit current period before closing it
                   const implicitStart = client.billingStartDate || client.startDate

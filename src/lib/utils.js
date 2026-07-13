@@ -113,7 +113,7 @@ export const getPaymentStatus = (client) => {
     const cyclePaid      = lastPaidIndex >= currentIndex
     const debtSettled    = openingBalance === 0 || balance >= 0
     if (cyclePaid && debtSettled) return 'paid'
-    if (cyclePaid || openingBalance > 0) return 'partial'
+    if (cyclePaid) return 'partial'
     return 'unpaid'
   }
 
