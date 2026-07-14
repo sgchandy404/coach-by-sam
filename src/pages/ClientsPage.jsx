@@ -1110,6 +1110,7 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit, 
             onClick={async () => {
               setSaving(true)
               const newFee = billingType === 'monthly' ? (Number(monthlyFee) || null) : null
+              const newSessionRate = billingType === 'per_session' ? (Number(sessionRate) || null) : null
               await onEdit({
                 name: name.trim(), goal: goal.trim(), goalType, dob,
                 notes: notes.trim(), membershipType, startDate,
@@ -1118,8 +1119,20 @@ function ManageClientModal({ client, onClose, onStatusChange, onDelete, onEdit, 
                 classesPerCycle: cycleType === 'classes' ? (Number(classesPerCycle) || 10) : null,
                 billingType,
                 monthlyFee: newFee,
-                sessionRate: billingType === 'per_session' ? (Number(sessionRate) || null) : null,
+                sessionRate: newSessionRate,
               })
+              // Keep active billing period doc in sync with client doc fee fields
+              const periods = await getBillingPeriods(client.id)
+              const activePeriod = [...periods].reverse().find(p => !p.endDate)
+              if (activePeriod) {
+                await updateBillingPeriod(client.id, activePeriod.id, {
+                  billingType,
+                  monthlyFee: newFee,
+                  sessionRate: newSessionRate,
+                  cycleType,
+                  classesPerCycle: cycleType === 'classes' ? (Number(classesPerCycle) || 10) : null,
+                })
+              }
               await recomputeClientPaymentFields(client.id, newFee || 0, client.billingStartDate || client.startDate)
               onToast?.('Profile updated ✓')
               setSaving(false)

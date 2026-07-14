@@ -111,7 +111,7 @@ export const getPaymentStatus = (client) => {
     // If balance is non-negative and no opening balance debt, fully settled
     if (balance >= 0 && openingBalance === 0) return 'paid'
     const cyclePaid      = lastPaidIndex >= currentIndex
-    const debtSettled    = openingBalance === 0 || balance >= 0
+    const debtSettled    = balance >= 0
     if (cyclePaid && debtSettled) return 'paid'
     if (cyclePaid) return 'partial'
     return 'unpaid'
